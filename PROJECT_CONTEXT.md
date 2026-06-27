@@ -245,6 +245,24 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 
 ---
 
+## Extension points (where future work slots in)
+
+The code is kept comment-light on purpose; this is the single place that records
+the planned extensions and exactly where each one goes. Refer here instead of
+hunting for inline TODOs.
+
+| Planned work | Where it slots in |
+|--------------|-------------------|
+| Advanced answer path (full control) | `bedrock.answer_advanced()` — already implemented; enable with `ANSWER_PATH=advanced`. |
+| Per-session conversation history | `main.ask()` looks up history by `session_id` and passes it to `bedrock.answer()`; consume it in `answer_advanced()`. |
+| `next_step_hint` generation | Return it as structured output from `answer_advanced()`, then set it in `main.ask()` (currently hard-coded `None`). |
+| Real figure auto-tagging | Replace the static map in `figures.py` and have the model return `highlight_item` as structured output. |
+| Streaming (typing effect) | Swap `converse` for `converse_stream` in `answer_advanced()` and stream from `main.ask()`. |
+| Bedrock Guardrails | Add `guardrailConfiguration` to the `retrieve_and_generate` / `converse` calls in `bedrock.py`. |
+| Durable gaps / feedback store | Replace the JSON file in `gaps.py` and the in-memory list in `main.py` with DynamoDB. |
+
+---
+
 ## Changelog
 
 ### 2026-06-27 — Initial scaffold
@@ -256,8 +274,12 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
   + `gaps.json` logging on gap).
 - Verified the app imports and `GET /health` returns `{"status":"ok"}` via
   FastAPI TestClient (no AWS calls needed for that check).
-- TODO markers left for: advanced path session history, real figure tagging,
-  `next_step_hint` generation, streaming, and Guardrails.
 - **Next step:** upload lab documents to the `bedrock-docs` S3 source and press
   **Sync** in the Bedrock console, then exercise `POST /ask` against real data
   and calibrate `GAP_THRESHOLD`.
+
+### 2026-06-27 — Trimmed inline comments
+- Reduced verbose per-line/per-function comments across all modules to a sparse,
+  natural style. Planned extensions now live in the **Extension points** section
+  above (single source) rather than scattered inline TODOs.
+- Behaviour unchanged; re-verified `GET /health` and the non-AWS endpoints.
