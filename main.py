@@ -3,10 +3,12 @@
 Run: uvicorn main:app --reload --port 8000   (then GET /health)
 """
 
+import json
 from typing import Any, Optional
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 import bedrock
@@ -15,6 +17,12 @@ import gaps
 import prompts
 
 app = FastAPI(title="Lab Tacit-Knowledge AI Agent", version="0.1.0")
+
+
+def json_response(data) -> Response:
+    """UTF-8を明示したJSONレスポンスを返す。PowerShellなど一部クライアントの文字化けを防ぐ。"""
+    content = json.dumps(data, ensure_ascii=False)
+    return Response(content=content, media_type="application/json; charset=utf-8")
 
 # Open CORS for the hackathon; restrict before any public deploy.
 app.add_middleware(
@@ -92,7 +100,7 @@ class FeedbackResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return json_response({"status": "ok"})
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -120,7 +128,7 @@ def ask(req: AskRequest):
 
 @app.get("/gaps", response_model=GapsResponse)
 def get_gaps():
-    return {"gaps": gaps.list_gaps()}
+    return json_response({"gaps": gaps.list_gaps()})
 
 
 @app.post("/onboarding", response_model=OnboardingResponse)
@@ -144,7 +152,7 @@ _FAQ_ITEMS = [
 
 @app.get("/faq", response_model=FaqResponse)
 def faq():
-    return {"items": _FAQ_ITEMS}
+    return json_response({"items": _FAQ_ITEMS})
 
 
 _FEEDBACK_LOG: list[dict] = []
