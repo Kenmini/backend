@@ -9,10 +9,14 @@
 *.txt
 # ...but the dependency list must stay tracked.
 !requirements.txt
+!requirements-dev.txt
 
 # --- Runtime data ----------------------------------------------------------
 # Local knowledge-gap store, written at runtime.
 gaps.json
+data/
+backups/
+images/charts/
 
 # --- Python ----------------------------------------------------------------
 __pycache__/
@@ -42,3 +46,4 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+AGENTS.md

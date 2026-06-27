@@ -1,0 +1,9 @@
+flowchart LR
+    UI["Frontend"] --> API["FastAPI routes"]
+    API --> SVC["Knowledge service"]
+    SVC --> REPO["SQLite or memory repository"]
+    SVC --> FIXTURE["Fixture provider"]
+    SVC --> BEDROCK["Bedrock provider"]
+    BEDROCK --> KB["Knowledge Base retrieval"]
+    BEDROCK --> SONNET["Sonnet Converse"]
+    BEDROCK --> HAIKU["Haiku Converse"]

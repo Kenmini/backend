@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant UI as Frontend
+    participant API as POST /ask
+    participant DB as Repository
+    participant KB as Bedrock KB
+    participant LLM as Sonnet Converse
+    UI->>API: message, session_id, current_state
+    API->>DB: load last 10 turns
+    API->>KB: retrieve top 5 chunks
+    alt score below threshold
+        KB-->>API: knowledge gap
+        API->>DB: log gap
+    else grounded result
+        API->>LLM: context, history, JSON schema
+        LLM-->>API: answer and next step
+    end
+    API->>DB: save interaction
+    API-->>UI: stable response contract

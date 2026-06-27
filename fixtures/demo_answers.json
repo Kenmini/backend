@@ -1,0 +1,27 @@
+{
+  "answers": {
+    "輝度つまみはどこですか？": {
+      "answer_text": "輝度つまみはコントロールパネル右上にあります。",
+      "next_step_hint": "次にフォーカスノブを確認してください。",
+      "citations": [
+        {
+          "source": "demo-microscope-manual.pdf",
+          "snippet": "輝度つまみはコントロールパネル右上にあります。"
+        }
+      ],
+      "confidence": 0.92,
+      "is_gap": false
+    }
+  },
+  "default_gap": {
+    "answer_text": "ご質問の内容は、まだ研究室の資料に記録されていないようです。",
+    "next_step_hint": null,
+    "citations": [],
+    "confidence": 0.0,
+    "is_gap": true
+  },
+  "onboarding": {
+    "M1": "M1向けオンボーディング: 初日に安全講習と研究室設備の説明を受けてください。",
+    "D1": "D1向けオンボーディング: 研究計画と設備利用ルールを指導教員と確認してください。"
+  }
+}

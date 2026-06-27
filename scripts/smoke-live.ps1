@@ -1,0 +1,56 @@
+param([int]$Port = 8766)
+$ErrorActionPreference = "Stop"
+$root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$python = Join-Path $root ".venv\Scripts\python.exe"
+$database = Join-Path $root ("data\live-smoke-{0}.db" -f [guid]::NewGuid())
+$baseUrl = "http://127.0.0.1:$Port"
+$process = $null
+
+function Assert-True([bool]$Condition, [string]$Message) {
+    if (-not $Condition) { throw $Message }
+}
+
+try {
+    $env:APP_MODE = "live"
+    $env:ANSWER_PATH = "advanced"
+    $env:STORAGE_MODE = "sqlite"
+    $env:DATABASE_PATH = $database
+    # Calibrated for the committed hackathon documents and the two smoke queries.
+    $env:GAP_THRESHOLD = "0.79"
+    $process = Start-Process -FilePath $python -ArgumentList @(
+        "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", $Port,
+        "--app-dir", $root
+    ) -PassThru -WindowStyle Hidden
+
+    $ready = $false
+    for ($attempt = 0; $attempt -lt 160; $attempt++) {
+        try {
+            $health = Invoke-RestMethod "$baseUrl/health" -TimeoutSec 2
+            if ($health.status -eq "ok") { $ready = $true; break }
+        } catch { Start-Sleep -Milliseconds 250 }
+    }
+    Assert-True $ready "Server did not become healthy"
+
+    $readiness = Invoke-RestMethod "$baseUrl/ready" -TimeoutSec 10
+    Assert-True ($readiness.status -eq "ready") "Readiness check failed"
+
+    $knownBody = @{ message = "研究室の安全ルール"; session_id = "live-smoke" } | ConvertTo-Json
+    $known = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $knownBody -TimeoutSec 90
+    Assert-True (-not $known.is_gap) "Known live query unexpectedly returned a gap"
+    Assert-True ($known.citations.Count -gt 0) "Known live query returned no citations"
+
+    $gapBody = @{ message = "火星基地の量子エレベーターの暗証番号は？"; session_id = "live-smoke" } | ConvertTo-Json
+    $gap = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $gapBody -TimeoutSec 90
+    Assert-True $gap.is_gap "Calibrated live gap query did not return a gap"
+    Assert-True ($gap.citations.Count -eq 0) "Gap response returned citations"
+
+    $onboardingBody = @{ role = "M1"; field = "光学" } | ConvertTo-Json
+    $onboarding = Invoke-RestMethod "$baseUrl/onboarding" -Method Post -ContentType "application/json" -Body $onboardingBody -TimeoutSec 90
+    Assert-True ([bool]$onboarding.guide) "Live onboarding guide is empty"
+    Write-Host "Live Sonnet, Haiku, retrieval, gap, and endpoint smoke tests passed."
+} finally {
+    if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+    foreach ($path in @($database, "$database-wal", "$database-shm")) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}

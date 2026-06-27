@@ -1,0 +1,10 @@
+flowchart TD
+    START["Run preflight"] --> READY{"Live advanced ready?"}
+    READY -->|Yes| ADVANCED["Live advanced mode"]
+    READY -->|No| EASY_CHECK{"Easy path verified?"}
+    EASY_CHECK -->|Yes| EASY["Live easy mode"]
+    EASY_CHECK -->|No| DEMO["Explicit demo mode"]
+    ADVANCED --> SMOKE["Run endpoint smoke test"]
+    EASY --> SMOKE
+    DEMO --> SMOKE
+    SMOKE --> STAGE["Start judged demo"]

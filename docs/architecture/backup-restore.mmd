@@ -1,0 +1,8 @@
+flowchart LR
+    LIVE["Active SQLite database"] --> BACKUP["Online backup API"]
+    BACKUP --> CHECK["PRAGMA integrity_check"]
+    CHECK --> SNAPSHOT["Timestamped local snapshot"]
+    SNAPSHOT --> VERIFY["Verify before restore"]
+    VERIFY --> SAFETY["Create pre-restore safety copy"]
+    SAFETY --> RESTORE["Restore selected snapshot"]
+    RESTORE --> SMOKE["Run demo smoke test"]

@@ -47,7 +47,7 @@ AWS Bedrock (AWS Kiro and Azure OpenAI also available).
 | Role | Model ID |
 |------|----------|
 | Smart (main answers) | `us.anthropic.claude-sonnet-4-6` |
-| Fast (FAQ, bulk) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+| Fast (onboarding) | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
 
 ### Known gotchas (these cost real time — read them)
 
@@ -122,8 +122,8 @@ Full reference with examples: see `API.md`.
 ## 5. Signature Agentic Feature — Knowledge-Gap Detection
 
 **This is the differentiator.** When answering, the backend reads the **top
-retrieval similarity score**. If it is below a tunable threshold (`GAP_THRESHOLD`,
-start `0.4`):
+retrieval similarity score**. If it is below the calibrated threshold
+(`GAP_THRESHOLD`, currently `0.79`):
 
 1. The answer **honestly states** the topic is not yet documented.
 2. `is_gap` is set to `true`.
@@ -137,18 +137,16 @@ governance / anti-hallucination story the judges want, and it demos in seconds.
 
 ### Two implementation paths
 
-**EASY path (default, active).** Uses `bedrock-agent-runtime`. Current
-implementation:
+**EASY path (explicit fallback).** Uses `bedrock-agent-runtime`:
 - First `retrieve` to get the top similarity score.
 - If below threshold → return the honest "not documented" message, `is_gap=true`,
   **skip generation entirely** (never hallucinate past recorded knowledge).
 - Otherwise `retrieve_and_generate` for a grounded answer + citations.
 
-**ADVANCED path (stretch, implemented but off by default).** Set
-`ANSWER_PATH=advanced`. Calls `retrieve` for chunks + scores, builds a context
-block, then `bedrock-runtime.converse` with the Japanese system prompt and
-per-session history — full control over persona, citations, and the exact
-confidence value.
+**ADVANCED path (default).** Calls `retrieve` for chunks + scores, builds a
+context block, then `bedrock-runtime.converse` with the Japanese system prompt,
+the latest 10 session turns, and a JSON response schema. Sonnet handles `/ask`;
+Haiku handles `/onboarding`. Citations and confidence remain retrieval-derived.
 
 ### visual_data sourcing (MVP)
 **No figure auto-tagging.** `figures.py` holds a small set of hand-prepared
@@ -162,24 +160,19 @@ Looks identical on stage, fraction of the effort.
 
 ```
 backend/                  (this repo root)
-  config.py          Central config: KB_ID, REGION, MODEL_IDS, GAP_THRESHOLD,
-                     ANSWER_PATH. All overridable via env. No secrets.
-  bedrock.py         answer_easy() (retrieve_and_generate), answer_advanced()
-                     (retrieve + converse), and answer() dispatcher.
-  prompts.py         Japanese system prompt, RAG prompt template, onboarding
-                     template, gap message.
-  gaps.py            log_gap() / list_gaps(), backed by gaps.json. Deduped by
-                     question; tracks count + first_seen ISO timestamp.
-  figures.py         Demo figures: figure_id -> valid highlight_item names,
-                     plus pick_highlight() to constrain visual_data.
-  main.py            FastAPI app. All routes, CORS open, Pydantic models for
-                     every request/response shape.
-  requirements.txt   fastapi, uvicorn, boto3, python-dotenv, pydantic.
-  .env.example       Placeholder values only.
-  .gitignore         Python + secrets ignores.
-  README.md          Setup/run/credentials for Windows and Mac.
-  API.md             Full API reference for frontend devs.
-  PROJECT_CONTEXT.md  This file.
+  app/api.py         FastAPI app factory, schemas, routes, readiness.
+  app/services.py    Ask/onboarding orchestration and safe fallbacks.
+  app/providers.py   Bedrock and deterministic fixture providers.
+  app/repositories.py SQLite/memory stores, migrations, backup/restore.
+  app/preflight.py   Live AWS identity, retrieval, and model checks.
+  config.py          Validated env configuration and compatibility aliases.
+  prompts.py         Japanese system and RAG prompt templates.
+  figures.py         Static figure/hotspot constraints.
+  fixtures/          Reviewed local demo responses.
+  scripts/           Windows launch, smoke, chart, preflight, recovery tools.
+  tests/             Unit and full endpoint contract tests.
+  docs/              Architecture sources and operations runbook.
+  main.py            Thin Uvicorn entrypoint.
 ```
 
 The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
@@ -188,27 +181,28 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 
 ## Current status
 
-- ✅ Full backend scaffolded; **EASY path active**.
+- ✅ Modular FastAPI backend; **ADVANCED path is the documented default**.
 - ✅ `GET /health` returns `{"status":"ok"}`; app starts with `uvicorn main:app`.
-- ✅ `POST /ask` returns the full contract shape (citations from KB, `is_gap`
-  via top-score heuristic, `visual_data` constrained by `figures.py`).
-- ✅ `gaps.py` + `GET /gaps` implemented (local `gaps.json`).
-- ✅ `/onboarding`, `/faq`, `/feedback` implemented.
-- ✅ `README.md`, `API.md`, this file written.
-- ⛔ **Blocker:** KB has no synced documents yet → every `/ask` reports a gap.
-  Upload files to the `bedrock-docs` S3 source and press **Sync** to unblock.
-- ⬜ ADVANCED path implemented but not yet exercised against real KB data.
-- ⬜ `next_step_hint` is `null` on the easy path (TODO: generate in advanced path).
+- ✅ `POST /ask` uses Sonnet Converse, structured output, citations, next-step
+  hints, and bounded SQLite session history.
+- ✅ `/onboarding` routes through Haiku; `/faq` remains static and deterministic.
+- ✅ SQLite stores gaps, feedback, and interactions; memory mode is explicit.
+- ✅ `/ready`, fixture demo mode, JSON logs, backup/restore, AWS preflight,
+  Windows smoke tests, and rendered architecture charts implemented.
+- ✅ Pytest covers every endpoint and enforces at least 85% application coverage.
+- ✅ Knowledge Base retrieval currently returns synced documents.
+- ✅ Live preflight verified account `465239007752`, `us-east-1`, five retrieval
+  results, Sonnet structured output, and Haiku Converse.
+- ✅ Live endpoint smoke verified a cited answer, a `0.79`-threshold gap, gap
+  persistence, and onboarding generation.
 
 ---
 
 ## Decisions log
 
-- **`retrieve_and_generate` is the default (EASY path).** One managed call
-  returns answer + citations with the least code and fewest moving parts —
-  right for a 2-day hackathon. The ADVANCED path (`retrieve` + `converse`)
-  exists for when we need exact confidence, custom persona, or session history,
-  but it is more code to get right under time pressure.
+- **Advanced is the default; easy is an explicit fallback.** Sonnet Converse
+  provides schema-constrained answers, history, and next-step hints. The managed
+  easy path remains available for stage contingency without automatic failover.
 - **Gap detection is the signature feature.** The hackathon is judged on
   responsibility/governance/ethics. A RAG bot that *admits what it doesn't know*
   and *captures the gap for humans* is a stronger story than raw answer quality,
@@ -227,6 +221,12 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
   PDFs is out of scope for the MVP; a fixed hotspot map looks identical on stage.
 - **Region pinned in config.** All boto3 clients use `config.REGION`
   (`us-east-1`) so a stray default region can't silently break retrieval.
+- **LLMs are routed by endpoint.** Sonnet handles grounded questions; Haiku
+  handles onboarding. Static FAQ responses make no model call.
+- **Demo fallback is explicit.** `APP_MODE=demo` uses reviewed local fixtures;
+  live AWS failures never silently produce simulated answers.
+- **SQLite is the local durable store.** It requires no service installation,
+  supports online verified backups, and can be replaced by memory mode explicitly.
 
 ---
 
@@ -234,14 +234,12 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 
 - **Figure sourcing path.** Keep the static hotspot map, or invest in real
   figure auto-tagging at ingestion? (MVP = static.)
-- **Gap threshold tuning.** `0.4` is a starting guess. Aurora/pgvector score
-  ranges may differ from cosine 0–1; calibrate against real synced data and
-  adjust `GAP_THRESHOLD` once documents are in.
+- **Gap threshold tuning.** `0.79` separates the committed live smoke queries,
+  but retrieval scores overlap for some unrelated questions. Keep measuring
+  known-answer and known-gap sets before claiming universal calibration.
 - **Streaming.** Add `converse_stream` for a typing effect in the demo? (Stretch.)
 - **Bedrock Guardrails.** Attach a Guardrail for an extra governance layer
   (PII redaction, denied topics)? Strong fit for the judging criteria. (Stretch.)
-- **next_step_hint generation.** Currently null on easy path — generate via the
-  advanced path's structured output?
 
 ---
 
@@ -253,13 +251,13 @@ hunting for inline TODOs.
 
 | Planned work | Where it slots in |
 |--------------|-------------------|
-| Advanced answer path (full control) | `bedrock.answer_advanced()` — already implemented; enable with `ANSWER_PATH=advanced`. |
-| Per-session conversation history | `main.ask()` looks up history by `session_id` and passes it to `bedrock.answer()`; consume it in `answer_advanced()`. |
-| `next_step_hint` generation | Return it as structured output from `answer_advanced()`, then set it in `main.ask()` (currently hard-coded `None`). |
+| Advanced answer path | `app.providers.BedrockAnswerProvider`; active with `ANSWER_PATH=advanced`. |
+| Per-session conversation history | `app.repositories` stores and bounds the latest 10 interactions. |
+| `next_step_hint` generation | Sonnet structured output in `app.providers`. |
 | Real figure auto-tagging | Replace the static map in `figures.py` and have the model return `highlight_item` as structured output. |
-| Streaming (typing effect) | Swap `converse` for `converse_stream` in `answer_advanced()` and stream from `main.ask()`. |
-| Bedrock Guardrails | Add `guardrailConfiguration` to the `retrieve_and_generate` / `converse` calls in `bedrock.py`. |
-| Durable gaps / feedback store | Replace the JSON file in `gaps.py` and the in-memory list in `main.py` with DynamoDB. |
+| Streaming (typing effect) | Add a streaming provider method and route in `app/api.py`. |
+| Bedrock Guardrails | Add `guardrailConfig` to Converse calls in `app/providers.py`. |
+| Cloud persistence | Add a repository implementation without changing routes or services. |
 
 ---
 
@@ -283,3 +281,17 @@ hunting for inline TODOs.
   natural style. Planned extensions now live in the **Extension points** section
   above (single source) rather than scattered inline TODOs.
 - Behaviour unchanged; re-verified `GET /health` and the non-AWS endpoints.
+
+### 2026-06-27 — Backend hardening, LLM routing, and local operations
+- Replaced the flat runtime with API, service, provider, and repository
+  boundaries while keeping the public response contracts compatible.
+- Made advanced retrieval + Sonnet Converse the documented `/ask` default,
+  added schema-constrained answers, next-step hints, and bounded history.
+- Routed `/onboarding` through Haiku and kept `/faq` model-free.
+- Added SQLite persistence, memory mode, legacy gap import, verified backups,
+  guarded restores, request IDs, JSON logs, readiness, and explicit demo mode.
+- Added endpoint/unit coverage, an 85% coverage gate, Windows smoke/preflight
+  scripts, Mermaid architecture sources, and local PNG/SVG chart generation.
+- Live AWS verification passed for retrieval, Sonnet structured output, Haiku,
+  a cited `/ask`, a calibrated gap, and `/onboarding`; default threshold moved
+  from the initial `0.4` guess to the provisional `0.79` hackathon value.

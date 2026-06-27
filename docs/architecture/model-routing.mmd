@@ -1,0 +1,8 @@
+flowchart TD
+    REQUEST["API request"] --> ROUTE{"Endpoint"}
+    ROUTE -->|POST /ask| RETRIEVE_ASK["Retrieve lab context"]
+    RETRIEVE_ASK --> SONNET["Sonnet 4.6 Converse"]
+    ROUTE -->|POST /onboarding| RETRIEVE_ONBOARD["Retrieve onboarding context"]
+    RETRIEVE_ONBOARD --> HAIKU["Haiku 4.5 Converse"]
+    ROUTE -->|GET /faq| STATIC["Static reviewed FAQ"]
+    ROUTE -->|APP_MODE=demo| FIXTURES["Local deterministic fixtures"]

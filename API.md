@@ -46,7 +46,7 @@ a confidence score, optional visual highlight data, and the knowledge-gap flag.
 | Field | Type | Description |
 |-------|------|-------------|
 | `answer_text` | string | The grounded answer, or an honest "not documented yet" message when `is_gap` is true. |
-| `next_step_hint` | string \| null | Suggested next action. `null` on the easy path (generated on the advanced path — see roadmap). |
+| `next_step_hint` | string \| null | Suggested next action from the advanced path; `null` on the easy or gap path. |
 | `visual_data` | object \| null | Which figure/hotspot to highlight. |
 | `visual_data.figure_id` | string \| null | The active figure id (echoes the request or the default). |
 | `visual_data.highlight_item` | string \| null | A hotspot name from that figure's known list, or `null` if none matched. |
@@ -70,7 +70,7 @@ a confidence score, optional visual highlight data, and the knowledge-gap flag.
 ```
 
 ### Knowledge-gap response (the signature behaviour)
-When the top retrieval score is below `GAP_THRESHOLD` (default `0.4`), the
+When the top retrieval score is below `GAP_THRESHOLD` (default `0.79`), the
 backend does **not** generate an answer. It returns an honest message, sets
 `is_gap: true`, empties `citations`, and logs the question for professors.
 
@@ -204,6 +204,24 @@ Liveness check. No AWS calls — safe to poll.
 
 ---
 
+## `GET /ready`
+
+Local readiness check. It verifies repository access and provider configuration
+without invoking an LLM.
+
+```json
+{
+  "status": "ready",
+  "mode": "live",
+  "database": "ok",
+  "provider": "configured"
+}
+```
+
+`status` becomes `degraded` when either dependency reports an error.
+
+---
+
 ## Errors
 
 - Validation errors (bad/missing fields) return **HTTP 422** with FastAPI's
@@ -212,3 +230,7 @@ Liveness check. No AWS calls — safe to poll.
   `/ask` and `/onboarding` still return **HTTP 200** with a safe fallback
   message so the demo stays up — check `is_gap` / `answer_text` rather than
   relying on a non-200 status.
+- `/feedback` returns **HTTP 503** if feedback cannot be persisted, and `/gaps`
+  returns **HTTP 503** if stored gaps cannot be read.
+- Unknown figure IDs, blank bounded strings, unsupported roles, and unsupported
+  ratings return **HTTP 422**.

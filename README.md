@@ -61,6 +61,31 @@ curl http://localhost:8000/health
 
 You should see `{"status":"ok"}`. You're good to go.
 
+For a deterministic demo without AWS, run:
+```powershell
+.\scripts\run-demo.ps1
+```
+
+Before using live Bedrock, verify the account, Knowledge Base, Sonnet, and
+Haiku in one pass:
+```powershell
+.\scripts\preflight.ps1
+```
+
+## Development and demo checks
+
+```powershell
+pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest --cov=app --cov=config --cov=figures --cov-fail-under=85
+.\scripts\smoke.ps1
+.\scripts\render-charts.ps1
+```
+
+The architecture chart sources are committed under `docs/architecture/`.
+Generated PNG and SVG files are written to the local, gitignored
+`images/charts/` folder. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for mode
+switching, backup, restore, and stage contingencies.
+
 ---
 
 ## API Endpoints
@@ -115,7 +140,7 @@ This is the main endpoint. Send a question, get an answer with citations.
 | `answer_text` | The answer, or an honest "I don't know" if undocumented |
 | `visual_data.highlight_item` | A hotspot name to highlight on the figure (or `null`) |
 | `citations` | Source documents the answer is based on |
-| `confidence` | 0.0–1.0 score. Below 0.4 = knowledge gap |
+| `confidence` | 0.0–1.0 score. Below the calibrated 0.79 threshold = knowledge gap |
 | `is_gap` | `true` means no documented answer — question is logged for professors |
 
 **Valid figure IDs and hotspot names for `visual_data`:**
@@ -212,6 +237,15 @@ Generates a role-specific onboarding guide from lab documents.
 
 No AWS calls — safe to poll at any frequency.
 
+### `GET /ready` — Check local dependencies
+
+```json
+{"status":"ready","mode":"live","database":"ok","provider":"configured"}
+```
+
+This validates local database access and provider configuration without making
+a paid AWS call.
+
 ---
 
 ## Troubleshooting
@@ -252,10 +286,13 @@ curl.exe http://localhost:8000/health
 
 | File | What it does |
 |------|--------------|
-| `main.py` | FastAPI app and all routes |
-| `bedrock.py` | All calls to Amazon Bedrock |
-| `config.py` | Configuration and environment variables |
+| `main.py` | Thin Uvicorn entrypoint |
+| `app/api.py` | FastAPI app factory, routes, and validation |
+| `app/providers.py` | Bedrock Converse and deterministic fixture providers |
+| `app/repositories.py` | SQLite and memory persistence plus backup/restore |
+| `app/services.py` | Answer, history, gap, and fallback coordination |
+| `config.py` | Validated configuration and compatibility aliases |
 | `prompts.py` | Japanese system prompts and templates |
-| `gaps.py` | Knowledge-gap storage (`gaps.json`) |
 | `figures.py` | Figure definitions and hotspot lists |
+| `scripts/` | Windows launch, smoke, preflight, chart, and recovery tools |
 | `API.md` | Full API reference |

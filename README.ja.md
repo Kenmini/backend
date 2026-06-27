@@ -115,7 +115,7 @@ curl http://localhost:8000/health
 | `answer_text` | 回答文。資料に記録がない場合は正直な「わかりません」メッセージ |
 | `visual_data.highlight_item` | 図上でハイライトするホットスポット名（なければ `null`） |
 | `citations` | 回答の根拠となった出典資料 |
-| `confidence` | 0.0〜1.0のスコア。0.4未満はナレッジギャップと判定 |
+| `confidence` | 0.0〜1.0のスコア。調整済みの0.79未満はナレッジギャップと判定 |
 | `is_gap` | `true` = 資料に答えなし。質問は教授向けに記録される |
 
 **`visual_data` で使用できる図IDとホットスポット名:**
@@ -212,6 +212,40 @@ AIが答えられなかった質問を、質問回数が多い順に返します
 
 AWSへの通信なし — 頻繁にポーリングしても問題ありません。
 
+### `GET /ready` — ローカル依存関係の確認
+
+```json
+{"status":"ready","mode":"live","database":"ok","provider":"configured"}
+```
+
+有料のAWS呼び出しを行わず、データベースとプロバイダー設定を確認します。
+
+---
+
+## 開発・デモ確認
+
+AWSを使わない確実なデモは次のコマンドで起動できます：
+```powershell
+.\scripts\run-demo.ps1
+```
+
+ライブBedrockを使う前に、AWSアカウント、Knowledge Base、Sonnet、Haikuを確認します：
+```powershell
+.\scripts\preflight.ps1
+```
+
+テスト、全APIスモークテスト、構成図の生成：
+```powershell
+pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m pytest --cov=app --cov=config --cov=figures --cov-fail-under=85
+.\scripts\smoke.ps1
+.\scripts\render-charts.ps1
+```
+
+Mermaidソースは `docs/architecture/` にコミットされ、生成したPNG/SVGは
+gitignoredの `images/charts/` に保存されます。運用手順は
+[docs/OPERATIONS.md](docs/OPERATIONS.md) を参照してください。
+
 ---
 
 ## トラブルシューティング
@@ -252,10 +286,13 @@ curl.exe http://localhost:8000/health
 
 | ファイル | 役割 |
 |---------|------|
-| `main.py` | FastAPIアプリと全ルート定義 |
-| `bedrock.py` | Amazon Bedrockへの全API呼び出し |
-| `config.py` | 設定と環境変数 |
+| `main.py` | Uvicorn用の薄いエントリーポイント |
+| `app/api.py` | FastAPIアプリファクトリ、ルート、入力検証 |
+| `app/providers.py` | Bedrock Converseとデモ用固定レスポンス |
+| `app/repositories.py` | SQLite・メモリ保存、バックアップ・復元 |
+| `app/services.py` | 回答、履歴、ギャップ、フォールバックの制御 |
+| `config.py` | 検証済み設定と旧環境変数の互換対応 |
 | `prompts.py` | 日本語システムプロンプトとテンプレート |
-| `gaps.py` | ナレッジギャップの保存（`gaps.json`） |
 | `figures.py` | 図の定義とホットスポット一覧 |
+| `scripts/` | Windows用起動、スモーク、事前確認、復旧ツール |
 | `API.ja.md` | APIリファレンス（日本語） |
