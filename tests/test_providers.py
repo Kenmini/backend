@@ -68,12 +68,36 @@ class FakeRuntime:
                 {
                     "answer_text": "パネル右上の輝度つまみです。",
                     "next_step_hint": "フォーカスを確認してください。",
+                    "is_supported": True,
                 },
                 ensure_ascii=False,
             )
         return {
             "output": {"message": {"content": [{"text": text}]}},
             "ResponseMetadata": {"RequestId": "request-1"},
+        }
+
+
+class UnsupportedRuntime(FakeRuntime):
+    def converse(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "output": {
+                "message": {
+                    "content": [
+                        {
+                            "text": json.dumps(
+                                {
+                                    "answer_text": "資料には回答がありません。",
+                                    "next_step_hint": "先生に確認してください。",
+                                    "is_supported": False,
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    ]
+                }
+            }
         }
 
 
@@ -121,6 +145,20 @@ def test_gap_skips_converse():
     assert result.is_gap is True
     assert result.citations == []
     assert runtime.calls == []
+
+
+def test_high_score_but_unsupported_context_becomes_gap():
+    providers = _providers()
+    runtime = UnsupportedRuntime()
+    provider = providers.BedrockAnswerProvider(settings(), FakeAgentRuntime(), runtime)
+
+    result = provider.ask("研究室の安全ルール", [])
+
+    assert result.is_gap is True
+    assert result.answer_text == providers.prompts.GAP_MESSAGE
+    assert result.next_step_hint is None
+    assert result.citations == []
+    assert result.confidence == 0.0
 
 
 def test_onboarding_uses_haiku_without_history_or_output_schema():

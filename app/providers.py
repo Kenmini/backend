@@ -20,8 +20,14 @@ ANSWER_SCHEMA = {
     "properties": {
         "answer_text": {"type": "string"},
         "next_step_hint": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "is_supported": {
+            "type": "boolean",
+            "description": (
+                "True only when the retrieved text directly supports the answer"
+            ),
+        },
     },
-    "required": ["answer_text", "next_step_hint"],
+    "required": ["answer_text", "next_step_hint", "is_supported"],
     "additionalProperties": False,
 }
 
@@ -112,7 +118,7 @@ class BedrockAnswerProvider:
         if score < self.settings.gap_threshold:
             return AnswerResult(
                 answer_text=prompts.GAP_MESSAGE,
-                confidence=round(score, 3),
+                confidence=0.0,
                 is_gap=True,
             )
         if self.settings.answer_path == "easy":
@@ -169,6 +175,9 @@ class BedrockAnswerProvider:
                         "text": (
                             f"参考資料:\n{context}\n\n質問: {message}\n\n"
                             "参考資料のみに基づいて回答してください。"
+                            "参考資料が質問へ直接回答している場合のみ、"
+                            "is_supportedをtrueにしてください。"
+                            "単に関連するだけの場合はfalseにしてください。"
                         )
                     }
                 ],
@@ -199,10 +208,19 @@ class BedrockAnswerProvider:
         parsed = json.loads(text)
         answer_text = parsed.get("answer_text")
         next_step_hint = parsed.get("next_step_hint")
+        is_supported = parsed.get("is_supported")
         if not isinstance(answer_text, str) or not answer_text.strip():
             raise ValueError("Bedrock returned an empty structured answer")
         if next_step_hint is not None and not isinstance(next_step_hint, str):
             raise ValueError("Bedrock returned an invalid next step")
+        if not isinstance(is_supported, bool):
+            raise ValueError("Bedrock returned an invalid support decision")
+        if not is_supported:
+            return AnswerResult(
+                answer_text=prompts.GAP_MESSAGE,
+                confidence=0.0,
+                is_gap=True,
+            )
         return AnswerResult(
             answer_text=answer_text,
             next_step_hint=next_step_hint,
