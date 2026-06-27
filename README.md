@@ -36,7 +36,7 @@ pip install -r requirements.txt
 **Windows (PowerShell)**
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
@@ -66,6 +66,8 @@ Then edit `.env` and set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
 ```bash
 uvicorn main:app --reload --port 8000
 ```
+
+![Server running](images/server-running.png)
 
 ### 5. Verify it's up
 ```bash
