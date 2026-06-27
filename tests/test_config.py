@@ -14,6 +14,10 @@ ENV_NAMES = (
     "RAG_MODEL_ARN",
     "GAP_THRESHOLD",
     "HISTORY_LIMIT",
+    "PUBLIC_DEMO",
+    "DEMO_API_TOKEN",
+    "MODEL_RATE_LIMIT_PER_MINUTE",
+    "CORS_ORIGINS",
     "MODEL_SMART",
     "MODEL_FAST",
     "MODEL_SMART_ARN",
@@ -42,6 +46,9 @@ def test_settings_have_safe_hackathon_defaults():
     )
     assert settings.history_limit == 10
     assert settings.gap_threshold == 0.2
+    assert settings.public_demo is False
+    assert settings.demo_api_token is None
+    assert settings.model_rate_limit_per_minute == 30
 
 
 @pytest.mark.parametrize(
@@ -76,3 +83,41 @@ def test_new_model_names_take_priority_over_compatibility_aliases(monkeypatch):
     assert settings.ask_model_id == "new-ask"
     assert settings.onboarding_model_id == "new-onboarding"
     assert settings.rag_model_arn == "new-rag"
+
+
+def test_public_demo_requires_specific_cors_and_strong_token(monkeypatch):
+    config = runtime_config
+    monkeypatch.setenv("PUBLIC_DEMO", "true")
+
+    with pytest.raises(ValueError, match="DEMO_API_TOKEN"):
+        config.Settings.from_env(load_dotenv_file=False)
+
+    monkeypatch.setenv("DEMO_API_TOKEN", "short")
+    monkeypatch.setenv("CORS_ORIGINS", "https://frontend.example")
+    with pytest.raises(ValueError, match="32 characters"):
+        config.Settings.from_env(load_dotenv_file=False)
+
+    monkeypatch.setenv("DEMO_API_TOKEN", "x" * 32)
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    with pytest.raises(ValueError, match="wildcard CORS"):
+        config.Settings.from_env(load_dotenv_file=False)
+
+
+def test_public_demo_accepts_explicit_origins_and_rate_limit(monkeypatch):
+    config = runtime_config
+    monkeypatch.setenv("PUBLIC_DEMO", "true")
+    monkeypatch.setenv("DEMO_API_TOKEN", "x" * 32)
+    monkeypatch.setenv(
+        "CORS_ORIGINS", "https://frontend.example,http://localhost:5173"
+    )
+    monkeypatch.setenv("MODEL_RATE_LIMIT_PER_MINUTE", "12")
+
+    settings = config.Settings.from_env(load_dotenv_file=False)
+
+    assert settings.public_demo is True
+    assert settings.demo_api_token == "x" * 32
+    assert settings.cors_origins == (
+        "https://frontend.example",
+        "http://localhost:5173",
+    )
+    assert settings.model_rate_limit_per_minute == 12

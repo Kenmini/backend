@@ -1,0 +1,41 @@
+flowchart TB
+    subgraph Prepare["1 · 発表前"]
+        direction LR
+        Start(["開始"]) --> Offline["詳細オフラインスモーク<br/>12の運用シナリオ"]
+        Offline --> Mode{"KB同期済み +<br/>ライブ事前検証成功？"}
+        Mode -->|"はい"| Live["ライブ<br/>Bedrock + Converse"]
+        Mode -->|"いいえ"| Demo["デモ<br/>ローカルフィクスチャ"]
+        Live --> Publish["一時HTTPSトンネル"]
+        Demo --> Publish
+        Publish --> PublicSmoke{"公開スモーク成功？"}
+    end
+
+    subgraph Stage["2 · 発表中"]
+        direction LR
+        Present["発表<br/>/ready + ログを監視"] --> Failure{"障害？"}
+        Failure -->|"Bedrock / KB"| Switch["デモモードで再起動"]
+        Failure -->|"トンネル"| Retunnel["トンネルを再起動<br/>新しいURLを共有"]
+        Failure -->|"ストレージ"| Restore["検証済みバックアップを復元"]
+        Switch --> Resume["発表を継続"]
+        Retunnel --> Resume
+        Restore --> Resume
+        Failure -->|"なし"| End(["終了後トンネルを停止"])
+        Resume --> End
+        Local["ローカルフロントエンド<br/>または localhost API"] --> End
+    end
+
+    PublicSmoke -->|"はい"| Present
+    PublicSmoke -->|"いいえ"| Local
+
+    classDef check fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef live fill:#9a3412,stroke:#fdba74,color:#ffffff,stroke-width:2px
+    classDef demo fill:#047857,stroke:#6ee7b7,color:#ffffff,stroke-width:2px
+    classDef action fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef recover fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    classDef terminal fill:#334155,stroke:#cbd5e1,color:#ffffff,stroke-width:2px
+    class Mode,PublicSmoke,Failure check
+    class Live live
+    class Demo demo
+    class Offline,Publish,Present,Local,Resume action
+    class Switch,Retunnel,Restore recover
+    class Start,End terminal

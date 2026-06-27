@@ -10,7 +10,9 @@ not affect Python activation.
 pip install -r requirements-dev.txt
 .venv\Scripts\python.exe -m pytest --cov=app --cov=config --cov=figures --cov-fail-under=85
 .\scripts\render-charts.ps1
+.\scripts\render-presentation-charts.ps1
 .\scripts\smoke.ps1
+.\scripts\smoke-deep.ps1
 .\scripts\backup.ps1
 ```
 
@@ -39,6 +41,31 @@ guide.
 
 Mode changes are explicit. An AWS error never silently switches the app to
 fixture responses.
+
+## Temporary public HTTPS access
+
+Install Cloudflare's tunnel client once:
+
+```powershell
+winget install --id Cloudflare.cloudflared --exact
+```
+
+Then start the backend with the exact frontend origin. You must explicitly
+choose `demo` or `live`; the launcher has no default mode.
+
+```powershell
+.\scripts\start-public-demo.ps1 -Mode demo -FrontendOrigin https://your-frontend.example
+```
+
+The launcher generates a temporary token, binds Uvicorn only to `127.0.0.1`,
+publishes a random HTTPS Quick Tunnel URL, and runs public smoke tests before
+remaining active. The frontend must send the displayed token in the
+`X-Demo-Token` header. `/health` remains public; all other API endpoints require
+the token. API documentation and OpenAPI routes are disabled in public mode.
+
+Press `Ctrl+C` immediately after the session. This stops the backend and tunnel,
+invalidates the random URL, and removes the token from the launcher process.
+See [HOSTING.md](HOSTING.md) for the security model and alternatives.
 
 ## Stage contingency
 
@@ -71,3 +98,5 @@ backups, and generated charts remain local and are never committed.
 - Sonnet structured-output warm-up delay: wait for `preflight.ps1` to finish
   before going on stage.
 - Live model failure: use the next explicit mode in the contingency sequence.
+- Public smoke failure: do not share the URL; fix the reported token, CORS, or
+  endpoint failure first.

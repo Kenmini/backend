@@ -1,6 +1,10 @@
 # APIリファレンス — ラボAIナレッジエージェント
 
 ベースURL（ローカル）: `http://localhost:8000`  
+
+一時公開プロファイルでは `/health` 以外の全エンドポイントに
+`X-Demo-Token: <一時トークン>` が必要です。公開中は `/docs`、`/redoc`、
+`/openapi.json` は無効になります。
 すべてのリクエストボディのContent-Type: `application/json`  
 CORSはハッカソン用に全オリジン（`*`）で開放されています。
 

@@ -17,6 +17,7 @@ gaps.json
 data/
 backups/
 images/charts/
+reports/smoke/
 
 # --- Python ----------------------------------------------------------------
 __pycache__/

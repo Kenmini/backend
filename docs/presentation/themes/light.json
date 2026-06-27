@@ -1,0 +1,21 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "background": "#f8fafc",
+    "fontFamily": "Noto Sans JP, Segoe UI, sans-serif",
+    "fontSize": "18px",
+    "primaryTextColor": "#0f172a",
+    "lineColor": "#475569",
+    "clusterBkg": "#e2e8f0",
+    "clusterBorder": "#94a3b8",
+    "edgeLabelBackground": "#f8fafc",
+    "tertiaryColor": "#e2e8f0"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "htmlLabels": true,
+    "nodeSpacing": 50,
+    "rankSpacing": 65,
+    "padding": 18
+  }
+}

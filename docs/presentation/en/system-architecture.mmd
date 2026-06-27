@@ -1,0 +1,32 @@
+flowchart LR
+    User(["Lab member"]) --> FE["Web frontend<br/>Japanese UI"]
+    FE -->|"HTTPS + X-Demo-Token"| Edge["Cloudflare Quick Tunnel<br/>temporary public URL"]
+
+    subgraph Backend["FastAPI modular monolith"]
+        direction TB
+        Guard["Security boundary<br/>token · CORS · rate limit"]
+        API["HTTP API<br/>validation · request IDs"]
+        Service["Application services<br/>answer · onboarding · feedback"]
+        Provider{"Explicit mode"}
+        Repo["Repository interface"]
+        Guard --> API --> Service --> Provider
+        Service --> Repo
+    end
+
+    Edge --> Guard
+    Provider -->|"demo"| Fixture["Deterministic fixtures<br/>no AWS dependency"]
+    Provider -->|"live"| Retrieve["Bedrock Knowledge Base<br/>retrieve top 5"]
+    Retrieve --> Sonnet["Sonnet 4.6<br/>/ask · structured output"]
+    Retrieve --> Haiku["Haiku 4.5<br/>/onboarding"]
+    Repo --> SQLite[("SQLite<br/>WAL · local backup")]
+
+    classDef actor fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px
+    classDef edge fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef core fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef data fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    classDef aws fill:#9a3412,stroke:#fdba74,color:#ffffff,stroke-width:2px
+    class User,FE actor
+    class Edge edge
+    class Guard,API,Service,Provider,Repo core
+    class Fixture,SQLite data
+    class Retrieve,Sonnet,Haiku aws

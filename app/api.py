@@ -1,4 +1,5 @@
 import logging
+import secrets
 import time
 from typing import Literal
 from uuid import uuid4
@@ -6,9 +7,11 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import JSONResponse
 
 from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerProvider
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
+from app.security import SlidingWindowRateLimiter
 from app.services import KnowledgeService
 from config import Settings
 import figures
@@ -106,24 +109,56 @@ def create_app(
     provider = provider or create_provider(settings)
     repository = repository or create_repository(settings)
     service = KnowledgeService(provider, repository)
-    app = FastAPI(title="Lab Tacit-Knowledge AI Agent", version="0.2.0")
+    app = FastAPI(
+        title="Lab Tacit-Knowledge AI Agent",
+        version="0.2.0",
+        docs_url=None if settings.public_demo else "/docs",
+        redoc_url=None if settings.public_demo else "/redoc",
+        openapi_url=None if settings.public_demo else "/openapi.json",
+    )
     app.state.settings = settings
     app.state.provider = provider
     app.state.repository = repository
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
-        allow_credentials=False,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    limiter = SlidingWindowRateLimiter(settings.model_rate_limit_per_minute)
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or str(uuid4())
         started = time.perf_counter()
-        response: Response = await call_next(request)
+        path = request.url.path
+        response: Response
+        if settings.public_demo and path in {"/docs", "/redoc", "/openapi.json"}:
+            response = JSONResponse({"detail": "Not Found"}, status_code=404)
+        elif (
+            settings.public_demo
+            and path != "/health"
+            and request.method != "OPTIONS"
+            and not secrets.compare_digest(
+                request.headers.get("X-Demo-Token", ""),
+                settings.demo_api_token or "",
+            )
+        ):
+            response = JSONResponse(
+                {"detail": "Invalid or missing demo token"},
+                status_code=401,
+                headers={"WWW-Authenticate": "DemoToken"},
+            )
+        elif settings.public_demo and path in {"/ask", "/onboarding"}:
+            client_ip = request.headers.get("CF-Connecting-IP")
+            if not client_ip:
+                client_ip = request.client.host if request.client else "unknown"
+            allowed, retry_after = limiter.check(client_ip)
+            if allowed:
+                response = await call_next(request)
+            else:
+                response = JSONResponse(
+                    {"detail": "Model request rate limit exceeded"},
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+        else:
+            response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
         content_type = response.headers.get("content-type", "")
         if content_type.lower() == "application/json":
@@ -140,6 +175,18 @@ def create_app(
             },
         )
         return response
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"] if settings.public_demo else ["*"],
+        allow_headers=(
+            ["Content-Type", "X-Demo-Token", "X-Request-ID"]
+            if settings.public_demo
+            else ["*"]
+        ),
+    )
 
     @app.get("/health")
     def health():

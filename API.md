@@ -1,6 +1,10 @@
 # API Reference — Lab Tacit-Knowledge AI Agent
 
 Base URL (local): `http://localhost:8000`
+
+When the temporary public profile is active, `/health` is unauthenticated and
+all other endpoints require `X-Demo-Token: <temporary token>`. The public
+profile disables `/docs`, `/redoc`, and `/openapi.json`.
 Content type: `application/json` for all request bodies.
 CORS is open (`*`) for the hackathon.
 

@@ -1,0 +1,23 @@
+flowchart LR
+    Team["ハッカソン運用者<br/>Windows PC"] --> Local["Uvicorn<br/>127.0.0.1:8000"]
+    Local --> Tunnel["cloudflared<br/>アウトバウンドトンネル<br/>ルーター設定は不要"]
+    Tunnel --> Edge["Cloudflare エッジ<br/>ランダムなHTTPS URL"]
+    Edge --> Guard["FastAPI<br/>公開プロファイル<br/>トークン · 厳密なCORS<br/>レート制限"]
+    Guard --> API["バックエンドAPI"]
+    Frontend["ホスト済み<br/>フロントエンド<br/>許可したオリジンのみ"] -->|"X-Demo-Token"| Edge
+
+    Start["起動<br/>デモ / ライブを明示"] --> Checks["ローカル確認 +<br/>公開スモークテスト"]
+    Checks --> Share["URL + 一時トークンを<br/>チーム内だけで共有"]
+    Share --> Stop["デモ終了後 Ctrl+C"]
+    Stop --> Gone["トンネルURLは失効<br/>バックエンドはローカルのまま"]
+
+    classDef local fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px
+    classDef cloud fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef security fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    classDef action fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef stop fill:#b91c1c,stroke:#fca5a5,color:#ffffff,stroke-width:2px
+    class Team,Local,Frontend local
+    class Tunnel,Edge cloud
+    class Guard,API security
+    class Start,Checks,Share action
+    class Stop,Gone stop

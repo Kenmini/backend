@@ -1,0 +1,41 @@
+flowchart TB
+    subgraph Prepare["1 · BEFORE THE PRESENTATION"]
+        direction LR
+        Start(["Start"]) --> Offline["Deep offline smoke<br/>12 operational scenarios"]
+        Offline --> Mode{"KB synced +<br/>live preflight passes?"}
+        Mode -->|"Yes"| Live["LIVE<br/>Bedrock + Converse"]
+        Mode -->|"No"| Demo["DEMO<br/>local fixtures"]
+        Live --> Publish["Temporary HTTPS tunnel"]
+        Demo --> Publish
+        Publish --> PublicSmoke{"Public smoke passes?"}
+    end
+
+    subgraph Stage["2 · ON STAGE"]
+        direction LR
+        Present["Present<br/>monitor /ready + logs"] --> Failure{"Failure?"}
+        Failure -->|"Bedrock / KB"| Switch["Restart in DEMO mode"]
+        Failure -->|"Tunnel"| Retunnel["Restart tunnel<br/>share new URL"]
+        Failure -->|"Storage"| Restore["Restore verified backup"]
+        Switch --> Resume["Continue presentation"]
+        Retunnel --> Resume
+        Restore --> Resume
+        Failure -->|"None"| End(["Stop tunnel after session"])
+        Resume --> End
+        Local["Use local frontend<br/>or localhost API"] --> End
+    end
+
+    PublicSmoke -->|"Yes"| Present
+    PublicSmoke -->|"No"| Local
+
+    classDef check fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef live fill:#9a3412,stroke:#fdba74,color:#ffffff,stroke-width:2px
+    classDef demo fill:#047857,stroke:#6ee7b7,color:#ffffff,stroke-width:2px
+    classDef action fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef recover fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    classDef terminal fill:#334155,stroke:#cbd5e1,color:#ffffff,stroke-width:2px
+    class Mode,PublicSmoke,Failure check
+    class Live live
+    class Demo demo
+    class Offline,Publish,Present,Local,Resume action
+    class Switch,Retunnel,Restore recover
+    class Start,End terminal

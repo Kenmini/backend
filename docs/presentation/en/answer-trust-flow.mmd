@@ -1,0 +1,27 @@
+flowchart LR
+    Q["1 · User question"] --> V["2 · Validate input<br/>load newest 10 turns"]
+    V --> R["3 · Retrieve top 5<br/>from Knowledge Base"]
+    R --> T{"4 · Relevant evidence?<br/>score + content checks"}
+    T -->|"No"| Gap["Safe gap response<br/>no model call"]
+    T -->|"Yes"| LLM["5 · Sonnet Converse<br/>JSON-schema output"]
+    LLM --> Build["6 · Build response"]
+    R -.-> Evidence["Citations + confidence<br/>only from retrieval"]
+    Evidence --> Build
+    Build --> Save["7 · Save bounded history<br/>return answer + next step"]
+    Gap --> Log["Record knowledge gap<br/>for missing-document review"]
+
+    Note["Core trust rule<br/>The model cannot invent citations<br/>or confidence scores"]
+    Note -.-> Evidence
+
+    classDef input fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px
+    classDef process fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef decision fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef safe fill:#b91c1c,stroke:#fca5a5,color:#ffffff,stroke-width:2px
+    classDef output fill:#047857,stroke:#6ee7b7,color:#ffffff,stroke-width:2px
+    classDef note fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    class Q input
+    class V,R,LLM process
+    class T decision
+    class Gap,Log safe
+    class Build,Save,Evidence output
+    class Note note

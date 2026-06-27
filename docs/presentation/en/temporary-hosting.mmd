@@ -1,0 +1,23 @@
+flowchart LR
+    Team["Hackathon operator<br/>Windows laptop"] --> Local["Uvicorn<br/>127.0.0.1:8000"]
+    Local --> Tunnel["cloudflared outbound tunnel<br/>no router changes"]
+    Tunnel --> Edge["Cloudflare edge<br/>random HTTPS URL"]
+    Edge --> Guard["FastAPI public profile<br/>token · exact CORS · rate limit"]
+    Guard --> API["Backend endpoints"]
+    Frontend["Hosted frontend<br/>approved origin only"] -->|"X-Demo-Token"| Edge
+
+    Start["Start<br/>explicit demo or live"] --> Checks["Local health + public smoke"]
+    Checks --> Share["Share URL + temporary token<br/>with team"]
+    Share --> Stop["Ctrl+C after demo"]
+    Stop --> Gone["Tunnel URL expires<br/>backend remains local"]
+
+    classDef local fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px
+    classDef cloud fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef security fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    classDef action fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef stop fill:#b91c1c,stroke:#fca5a5,color:#ffffff,stroke-width:2px
+    class Team,Local,Frontend local
+    class Tunnel,Edge cloud
+    class Guard,API security
+    class Start,Checks,Share action
+    class Stop,Gone stop

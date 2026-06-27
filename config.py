@@ -43,6 +43,15 @@ def _positive_int(name: str, value: str) -> int:
     return parsed
 
 
+def _boolean(name: str, value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be true or false")
+
+
 @dataclass(frozen=True)
 class Settings:
     app_mode: str
@@ -66,6 +75,9 @@ class Settings:
     onboarding_max_tokens: int
     model_temperature: float
     cors_origins: tuple[str, ...]
+    public_demo: bool
+    demo_api_token: str | None
+    model_rate_limit_per_minute: int
 
     @classmethod
     def from_env(cls, *, load_dotenv_file: bool = True) -> "Settings":
@@ -85,6 +97,15 @@ class Settings:
         )
         if not origins:
             raise ValueError("CORS_ORIGINS must contain at least one origin")
+        public_demo = _boolean("PUBLIC_DEMO", _env("PUBLIC_DEMO", "false"))
+        demo_api_token = _env("DEMO_API_TOKEN", "").strip() or None
+        if public_demo:
+            if demo_api_token is None:
+                raise ValueError("DEMO_API_TOKEN is required in public-demo mode")
+            if len(demo_api_token) < 32:
+                raise ValueError("DEMO_API_TOKEN must be at least 32 characters")
+            if "*" in origins:
+                raise ValueError("PUBLIC_DEMO does not allow wildcard CORS origins")
 
         return cls(
             app_mode=_choice(
@@ -144,6 +165,12 @@ class Settings:
                 "MODEL_TEMPERATURE", _env("MODEL_TEMPERATURE", "0.2"), 0.0, 1.0
             ),
             cors_origins=origins,
+            public_demo=public_demo,
+            demo_api_token=demo_api_token,
+            model_rate_limit_per_minute=_positive_int(
+                "MODEL_RATE_LIMIT_PER_MINUTE",
+                _env("MODEL_RATE_LIMIT_PER_MINUTE", "30"),
+            ),
         )
 
 

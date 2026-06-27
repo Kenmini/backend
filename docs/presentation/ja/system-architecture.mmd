@@ -1,0 +1,32 @@
+flowchart LR
+    User(["研究室メンバー"]) --> FE["Webフロントエンド<br/>日本語UI"]
+    FE -->|"HTTPS + X-Demo-Token"| Edge["Cloudflare Quick Tunnel<br/>一時公開URL"]
+
+    subgraph Backend["FastAPI モジュラーモノリス"]
+        direction TB
+        Guard["セキュリティ境界<br/>トークン · CORS · レート制限"]
+        API["HTTP API<br/>入力検証 · リクエストID"]
+        Service["アプリケーション<br/>サービス<br/>回答 · 案内 · フィードバック"]
+        Provider{"明示的なモード選択"}
+        Repo["リポジトリ<br/>インターフェース"]
+        Guard --> API --> Service --> Provider
+        Service --> Repo
+    end
+
+    Edge --> Guard
+    Provider -->|"デモ"| Fixture["決定的なフィクスチャ<br/>AWSに依存しない"]
+    Provider -->|"ライブ"| Retrieve["Bedrock Knowledge Base<br/>上位5件を検索"]
+    Retrieve --> Sonnet["Sonnet 4.6<br/>/ask · 構造化出力"]
+    Retrieve --> Haiku["Haiku 4.5<br/>/onboarding"]
+    Repo --> SQLite[("SQLite<br/>WAL · ローカル<br/>バックアップ")]
+
+    classDef actor fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px
+    classDef edge fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef core fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef data fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    classDef aws fill:#9a3412,stroke:#fdba74,color:#ffffff,stroke-width:2px
+    class User,FE actor
+    class Edge edge
+    class Guard,API,Service,Provider,Repo core
+    class Fixture,SQLite data
+    class Retrieve,Sonnet,Haiku aws

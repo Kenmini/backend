@@ -69,6 +69,26 @@ def client(provider=None, repository=None):
     )
 
 
+def public_client(provider=None, repository=None, *, rate_limit=2):
+    api = _api()
+    settings = replace(
+        Settings.from_env(load_dotenv_file=False),
+        app_mode="demo",
+        storage_mode="memory",
+        public_demo=True,
+        demo_api_token="t" * 32,
+        model_rate_limit_per_minute=rate_limit,
+        cors_origins=("https://frontend.example",),
+    )
+    return TestClient(
+        api.create_app(
+            settings=settings,
+            provider=provider or FakeProvider(),
+            repository=repository or MemoryRepository(history_limit=10),
+        )
+    )
+
+
 def test_health_readiness_and_request_id():
     response = client().get("/ready", headers={"X-Request-ID": "known-id"})
 
@@ -175,3 +195,62 @@ def test_faq_is_static_and_does_not_call_provider():
     assert response.json()["items"]
     assert provider.ask_calls == []
     assert provider.onboarding_calls == []
+
+
+def test_public_demo_requires_token_but_keeps_health_public():
+    test_client = public_client()
+
+    assert test_client.get("/health").status_code == 200
+    assert test_client.get("/ready").status_code == 401
+    assert (
+        test_client.get("/ready", headers={"X-Demo-Token": "wrong"}).status_code
+        == 401
+    )
+    assert (
+        test_client.get("/ready", headers={"X-Demo-Token": "t" * 32}).status_code
+        == 200
+    )
+
+
+def test_public_demo_hides_docs_and_applies_strict_cors():
+    test_client = public_client()
+
+    assert test_client.get("/docs").status_code == 404
+    assert test_client.get("/redoc").status_code == 404
+    assert test_client.get("/openapi.json").status_code == 404
+
+    allowed = test_client.options(
+        "/ask",
+        headers={
+            "Origin": "https://frontend.example",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "x-demo-token,content-type",
+        },
+    )
+    denied = test_client.options(
+        "/ask",
+        headers={
+            "Origin": "https://attacker.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://frontend.example"
+    assert "access-control-allow-origin" not in denied.headers
+
+
+def test_public_demo_rate_limits_model_routes_per_client():
+    provider = FakeProvider()
+    test_client = public_client(provider=provider, rate_limit=2)
+    headers = {"X-Demo-Token": "t" * 32, "CF-Connecting-IP": "203.0.113.10"}
+
+    first = test_client.post("/ask", json={"message": "one"}, headers=headers)
+    second = test_client.post("/ask", json={"message": "two"}, headers=headers)
+    limited = test_client.post("/ask", json={"message": "three"}, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"]
+    assert len(provider.ask_calls) == 2

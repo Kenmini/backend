@@ -1,0 +1,27 @@
+flowchart LR
+    Q["1 · ユーザーの質問"] --> V["2 · 入力を検証<br/>最新10ターンを取得"]
+    V --> R["3 · Knowledge Baseから<br/>上位5件を検索"]
+    R --> T{"4 · 根拠は十分か？<br/>スコア + 内容を検査"}
+    T -->|"いいえ"| Gap["安全なギャップ応答<br/>モデルを呼び出さない"]
+    T -->|"はい"| LLM["5 · Sonnet Converse<br/>JSONスキーマ出力"]
+    LLM --> Build["6 · 応答を組み立てる"]
+    R -.-> Evidence["引用 + 信頼度<br/>検索結果だけから生成"]
+    Evidence --> Build
+    Build --> Save["7 · 履歴を上限内で保存<br/>回答 + 次の手順を返す"]
+    Gap --> Log["知識ギャップを記録<br/>不足資料の確認に利用"]
+
+    Note["信頼性の原則<br/>モデルは引用や信頼度を<br/>作り出すことができない"]
+    Note -.-> Evidence
+
+    classDef input fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:2px
+    classDef process fill:#1d4ed8,stroke:#93c5fd,color:#ffffff,stroke-width:2px
+    classDef decision fill:#7c3aed,stroke:#c4b5fd,color:#ffffff,stroke-width:2px
+    classDef safe fill:#b91c1c,stroke:#fca5a5,color:#ffffff,stroke-width:2px
+    classDef output fill:#047857,stroke:#6ee7b7,color:#ffffff,stroke-width:2px
+    classDef note fill:#b45309,stroke:#fcd34d,color:#ffffff,stroke-width:2px
+    class Q input
+    class V,R,LLM process
+    class T decision
+    class Gap,Log safe
+    class Build,Save,Evidence output
+    class Note note

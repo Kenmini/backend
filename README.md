@@ -86,6 +86,21 @@ Generated PNG and SVG files are written to the local, gitignored
 `images/charts/` folder. See [docs/OPERATIONS.md](docs/OPERATIONS.md) for mode
 switching, backup, restore, and stage contingencies.
 
+For a temporary hackathon HTTPS URL, install `cloudflared` and run the guarded
+launcher with the deployed frontend's exact origin:
+
+```powershell
+winget install --id Cloudflare.cloudflared --exact
+.\scripts\start-public-demo.ps1 -Mode demo -FrontendOrigin https://your-frontend.example
+```
+
+The frontend must send the printed `X-Demo-Token`. Stop the launcher with
+`Ctrl+C` after the session. See [docs/HOSTING.md](docs/HOSTING.md) before using
+the public profile.
+
+Presentation-ready English/Japanese diagrams in light and dark themes can be
+generated with `scripts\render-presentation-charts.ps1`.
+
 ---
 
 ## API Endpoints

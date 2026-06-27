@@ -167,6 +167,7 @@ backend/                  (this repo root)
   app/services.py    Ask/onboarding orchestration and safe fallbacks.
   app/providers.py   Bedrock and deterministic fixture providers.
   app/repositories.py SQLite/memory stores, migrations, backup/restore.
+  app/security.py    Public-demo sliding-window request limiter.
   app/preflight.py   Live AWS identity, retrieval, and model checks.
   config.py          Validated env configuration and compatibility aliases.
   prompts.py         Japanese system and RAG prompt templates.
@@ -174,7 +175,7 @@ backend/                  (this repo root)
   fixtures/          Reviewed local demo responses.
   scripts/           Windows launch, smoke, chart, preflight, recovery tools.
   tests/             Unit and full endpoint contract tests.
-  docs/              Architecture sources and operations runbook.
+  docs/              Architecture/presentation sources and operator guides.
   main.py            Thin Uvicorn entrypoint.
 ```
 
@@ -193,6 +194,9 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 - ✅ `/ready`, fixture demo mode, JSON logs, backup/restore, AWS preflight,
   Windows smoke tests, and rendered architecture charts implemented.
 - ✅ Pytest covers every endpoint and enforces at least 85% application coverage.
+- ✅ Temporary HTTPS mode enforces a generated token, exact CORS origins, hidden
+  API docs, model-route rate limits, and public smoke verification.
+- ✅ English/Japanese presentation diagrams render in light/dark SVG and PNG.
 - ✅ Knowledge Base retrieval currently returns synced documents.
 - ✅ Live preflight verified account `465239007752`, `us-east-1`, five retrieval
   results, Sonnet structured output, and Haiku Converse.
@@ -228,6 +232,9 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
   handles onboarding. Static FAQ responses make no model call.
 - **Demo fallback is explicit.** `APP_MODE=demo` uses reviewed local fixtures;
   live AWS failures never silently produce simulated answers.
+- **Public access is temporary and guarded.** A Cloudflare Quick Tunnel exposes
+  loopback Uvicorn only after token, exact-CORS, DNS-readiness, and public smoke
+  checks pass. The URL and token are discarded when the launcher stops.
 - **SQLite is the local durable store.** It requires no service installation,
   supports online verified backups, and can be replaced by memory mode explicitly.
 
@@ -315,3 +322,19 @@ hunting for inline TODOs.
 - Recalibrated `GAP_THRESHOLD` to `0.20` after proving the KB scores were not
   monotonic enough for a threshold-only grounding decision.
 - Verified the live lab-safety request now returns the honest gap contract.
+
+### 2026-06-28 — Offline resilience, temporary hosting, and presentation assets
+- Added a guarded public profile with a generated 256-bit token, exact CORS,
+  hidden documentation routes, per-client model-route rate limits, and explicit
+  `demo|live` startup.
+- Added an actual-server deep smoke runner covering 12 offline security,
+  validation, concurrency, persistence, history, rate-limit, and recovery
+  scenarios with ignored JSON/Markdown reports.
+- Added a Cloudflare Quick Tunnel launcher with public DNS/health readiness,
+  transient URL retries, full HTTPS smoke tests, and guaranteed process cleanup.
+- Rehearsed the public demo end to end, then stopped the tunnel and confirmed
+  the former URL no longer reaches the backend.
+- Added four presentation diagrams in English and Japanese, light and dark
+  themes, with pinned reproducible SVG/PNG rendering and visual QA.
+- Expanded the hosting/runbook/API documentation and verified 45 tests at
+  89.51% application coverage plus all 12 deep smoke scenarios.

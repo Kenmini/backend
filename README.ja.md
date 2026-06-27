@@ -61,6 +61,27 @@ curl http://localhost:8000/health
 
 `{"status":"ok"}` が返ってきたら成功です。
 
+AWSなしで決定的なデモを行う場合：
+
+```powershell
+.\scripts\run-demo.ps1
+```
+
+ハッカソン中だけHTTPSで公開する場合は、フロントエンドの正確な
+オリジンを指定して起動します：
+
+```powershell
+winget install --id Cloudflare.cloudflared --exact
+.\scripts\start-public-demo.ps1 -Mode demo -FrontendOrigin https://your-frontend.example
+```
+
+フロントエンドは画面に表示された `X-Demo-Token` を送信する必要が
+あります。終了後は `Ctrl+C` で必ず停止してください。セキュリティ上の
+制約は [docs/HOSTING.md](docs/HOSTING.md) を参照してください。
+
+発表用の英語・日本語、ライト・ダーク両テーマの図は
+`.\scripts\render-presentation-charts.ps1` で生成できます。
+
 ---
 
 ## APIエンドポイント一覧
