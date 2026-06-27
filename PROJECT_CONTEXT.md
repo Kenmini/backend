@@ -295,3 +295,9 @@ hunting for inline TODOs.
 - Live AWS verification passed for retrieval, Sonnet structured output, Haiku,
   a cited `/ask`, a calibrated gap, and `/onboarding`; default threshold moved
   from the initial `0.4` guess to the provisional `0.79` hackathon value.
+
+### 2026-06-27 — PowerShell Japanese response compatibility
+- Added an explicit UTF-8 charset to JSON response headers so Windows
+  PowerShell's `curl` alias (`Invoke-WebRequest`) does not misdecode Japanese.
+- Added a regression test and verified the running `/faq` endpoint displays
+  Japanese correctly through `Invoke-WebRequest`.

@@ -14,7 +14,8 @@ reading the Python.
 
 ## Conventions
 
-- All responses are JSON.
+- JSON responses explicitly declare UTF-8 (`application/json; charset=utf-8`)
+  for compatibility with Windows PowerShell's `Invoke-WebRequest`/`curl` alias.
 - The frontend may safely **ignore fields it does not render** — every field is
   always present so backend and frontend can evolve independently.
 - Timestamps are ISO-8601 UTC strings (e.g. `2026-06-27T09:30:00+00:00`).

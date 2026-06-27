@@ -170,6 +170,8 @@ def test_faq_is_static_and_does_not_call_provider():
     response = client(provider=provider).get("/faq")
 
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
+    assert "研究室" in response.content.decode("utf-8")
     assert response.json()["items"]
     assert provider.ask_calls == []
     assert provider.onboarding_calls == []

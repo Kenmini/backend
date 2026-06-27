@@ -125,6 +125,9 @@ def create_app(
         started = time.perf_counter()
         response: Response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        content_type = response.headers.get("content-type", "")
+        if content_type.lower() == "application/json":
+            response.headers["content-type"] = "application/json; charset=utf-8"
         logger.info(
             "request_complete",
             extra={
