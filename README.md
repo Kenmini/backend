@@ -130,7 +130,7 @@ This is the main endpoint. Send a question, get an answer with citations.
   "next_step_hint": null,
   "visual_data": { "figure_id": "panel_01", "highlight_item": null },
   "citations": [],
-  "confidence": 0.12,
+  "confidence": 0.0,
   "is_gap": true
 }
 ```
@@ -140,7 +140,7 @@ This is the main endpoint. Send a question, get an answer with citations.
 | `answer_text` | The answer, or an honest "I don't know" if undocumented |
 | `visual_data.highlight_item` | A hotspot name to highlight on the figure (or `null`) |
 | `citations` | Source documents the answer is based on |
-| `confidence` | 0.0–1.0 score. Below the calibrated 0.79 threshold = knowledge gap |
+| `confidence` | Retrieval score for supported answers; `0.0` for knowledge gaps |
 | `is_gap` | `true` means no documented answer — question is logged for professors |
 
 **Valid figure IDs and hotspot names for `visual_data`:**

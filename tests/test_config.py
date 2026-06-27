@@ -41,7 +41,7 @@ def test_settings_have_safe_hackathon_defaults():
         == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     )
     assert settings.history_limit == 10
-    assert settings.gap_threshold == 0.79
+    assert settings.gap_threshold == 0.2
 
 
 @pytest.mark.parametrize(

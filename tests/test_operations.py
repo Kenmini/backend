@@ -146,7 +146,7 @@ def test_chart_sources_and_windows_scripts_are_reproducible():
     live_runner = (root / "scripts" / "run-live-advanced.ps1").read_text(
         encoding="utf-8"
     )
-    assert '$env:GAP_THRESHOLD = "0.79"' in live_runner
+    assert '$env:GAP_THRESHOLD = "0.20"' in live_runner
     for script in (
         "run-demo.ps1",
         "run-live-advanced.ps1",

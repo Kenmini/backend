@@ -105,7 +105,7 @@ curl http://localhost:8000/health
   "next_step_hint": null,
   "visual_data": { "figure_id": "panel_01", "highlight_item": null },
   "citations": [],
-  "confidence": 0.12,
+  "confidence": 0.0,
   "is_gap": true
 }
 ```
@@ -115,7 +115,7 @@ curl http://localhost:8000/health
 | `answer_text` | 回答文。資料に記録がない場合は正直な「わかりません」メッセージ |
 | `visual_data.highlight_item` | 図上でハイライトするホットスポット名（なければ `null`） |
 | `citations` | 回答の根拠となった出典資料 |
-| `confidence` | 0.0〜1.0のスコア。調整済みの0.79未満はナレッジギャップと判定 |
+| `confidence` | 根拠あり回答の検索スコア。ナレッジギャップ時は `0.0` |
 | `is_gap` | `true` = 資料に答えなし。質問は教授向けに記録される |
 
 **`visual_data` で使用できる図IDとホットスポット名:**

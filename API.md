@@ -54,7 +54,7 @@ a confidence score, optional visual highlight data, and the knowledge-gap flag.
 | `citations` | array | Source passages the answer is based on. Empty when `is_gap` is true. |
 | `citations[].source` | string | Source document name (e.g. file name). |
 | `citations[].snippet` | string | Short excerpt from the source (≤300 chars). |
-| `confidence` | number | 0.0–1.0. Top retrieval similarity score (rounded). |
+| `confidence` | number | Top retrieval score for a supported answer; `0.0` for a gap. |
 | `is_gap` | boolean | **Signature feature.** `true` when no documented answer exists; the question is logged to `/gaps`. |
 
 ```json
@@ -71,9 +71,12 @@ a confidence score, optional visual highlight data, and the knowledge-gap flag.
 ```
 
 ### Knowledge-gap response (the signature behaviour)
-When the top retrieval score is below `GAP_THRESHOLD` (default `0.79`), the
-backend does **not** generate an answer. It returns an honest message, sets
-`is_gap: true`, empties `citations`, and logs the question for professors.
+The backend declares a gap when the top retrieval score is below
+`GAP_THRESHOLD` (default `0.20`) or when Sonnet determines that higher-scoring
+chunks do not directly support the answer. Low-score gaps skip generation.
+Model-rejected gaps discard the draft answer and citations. Both paths return
+the honest gap message, set `is_gap: true`, set `confidence: 0.0`, and log the
+question for professors.
 
 ```json
 {
@@ -81,7 +84,7 @@ backend does **not** generate an answer. It returns an honest message, sets
   "next_step_hint": null,
   "visual_data": { "figure_id": "panel_01", "highlight_item": null },
   "citations": [],
-  "confidence": 0.12,
+  "confidence": 0.0,
   "is_gap": true
 }
 ```

@@ -25,9 +25,9 @@ The preflight verifies account `465239007752`, region `us-east-1`, Knowledge
 Base retrieval, Sonnet structured output, and Haiku text generation. It makes
 model calls but never uploads or changes Knowledge Base documents.
 
-The live smoke runner uses the provisional `0.79` threshold and verifies a
-cited Sonnet answer, a gap that skips generation, gap persistence, and a Haiku
-onboarding guide.
+The live smoke runner uses a `0.20` weak-retrieval cutoff and verifies a cited
+Sonnet answer, a model-audited gap, gap persistence, and a Haiku onboarding
+guide.
 
 ## Start modes
 

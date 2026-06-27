@@ -15,8 +15,8 @@ try {
     $env:ANSWER_PATH = "advanced"
     $env:STORAGE_MODE = "sqlite"
     $env:DATABASE_PATH = $database
-    # Calibrated for the committed hackathon documents and the two smoke queries.
-    $env:GAP_THRESHOLD = "0.79"
+    # Weak/empty retrieval cutoff; Sonnet performs the final support audit.
+    $env:GAP_THRESHOLD = "0.20"
     $process = Start-Process -FilePath $python -ArgumentList @(
         "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", $Port,
         "--app-dir", $root
@@ -34,12 +34,12 @@ try {
     $readiness = Invoke-RestMethod "$baseUrl/ready" -TimeoutSec 10
     Assert-True ($readiness.status -eq "ready") "Readiness check failed"
 
-    $knownBody = @{ message = "研究室の安全ルール"; session_id = "live-smoke" } | ConvertTo-Json
+    $knownBody = @{ message = "Amazon Bedrock Guardrailsの主な用途は何ですか？"; session_id = "live-smoke" } | ConvertTo-Json
     $known = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $knownBody -TimeoutSec 90
     Assert-True (-not $known.is_gap) "Known live query unexpectedly returned a gap"
     Assert-True ($known.citations.Count -gt 0) "Known live query returned no citations"
 
-    $gapBody = @{ message = "火星基地の量子エレベーターの暗証番号は？"; session_id = "live-smoke" } | ConvertTo-Json
+    $gapBody = @{ message = "研究室の安全ルール"; session_id = "live-smoke" } | ConvertTo-Json
     $gap = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $gapBody -TimeoutSec 90
     Assert-True $gap.is_gap "Calibrated live gap query did not return a gap"
     Assert-True ($gap.citations.Count -eq 0) "Gap response returned citations"

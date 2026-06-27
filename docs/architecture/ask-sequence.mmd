@@ -12,7 +12,12 @@ sequenceDiagram
         API->>DB: log gap
     else grounded result
         API->>LLM: context, history, JSON schema
-        LLM-->>API: answer and next step
+        LLM-->>API: answer, next step, is_supported
+        alt context directly supports answer
+            API->>DB: save supported interaction
+        else context is only related
+            API->>DB: log gap and discard draft
+        end
     end
     API->>DB: save interaction
     API-->>UI: stable response contract

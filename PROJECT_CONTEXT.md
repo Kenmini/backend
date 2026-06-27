@@ -121,9 +121,11 @@ Full reference with examples: see `API.md`.
 
 ## 5. Signature Agentic Feature — Knowledge-Gap Detection
 
-**This is the differentiator.** When answering, the backend reads the **top
-retrieval similarity score**. If it is below the calibrated threshold
-(`GAP_THRESHOLD`, currently `0.79`):
+**This is the differentiator.** The backend first reads the **top retrieval
+similarity score**. Scores below the weak-retrieval cutoff (`GAP_THRESHOLD`,
+currently `0.20`) skip generation. Higher-score results are generated only through
+the advanced path, where Sonnet must also confirm that the chunks directly
+support its answer. Either failure becomes a gap:
 
 1. The answer **honestly states** the topic is not yet documented.
 2. `is_gap` is set to `true`.
@@ -146,7 +148,8 @@ governance / anti-hallucination story the judges want, and it demos in seconds.
 **ADVANCED path (default).** Calls `retrieve` for chunks + scores, builds a
 context block, then `bedrock-runtime.converse` with the Japanese system prompt,
 the latest 10 session turns, and a JSON response schema. Sonnet handles `/ask`;
-Haiku handles `/onboarding`. Citations and confidence remain retrieval-derived.
+Haiku handles `/onboarding`. Citations remain retrieval-derived. Supported
+answers expose the retrieval score; gaps expose confidence `0.0`.
 
 ### visual_data sourcing (MVP)
 **No figure auto-tagging.** `figures.py` holds a small set of hand-prepared
@@ -193,7 +196,7 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 - ✅ Knowledge Base retrieval currently returns synced documents.
 - ✅ Live preflight verified account `465239007752`, `us-east-1`, five retrieval
   results, Sonnet structured output, and Haiku Converse.
-- ✅ Live endpoint smoke verified a cited answer, a `0.79`-threshold gap, gap
+- ✅ Live endpoint smoke verified a cited answer, a model-audited gap, gap
   persistence, and onboarding generation.
 
 ---
@@ -208,10 +211,10 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
   and *captures the gap for humans* is a stronger story than raw answer quality,
   and it demos in seconds. We even run a real `retrieve` on the easy path (not
   just a heuristic) so the gap signal is genuine.
-- **Gap-case skips generation.** When the top score is below threshold we do
-  **not** call the generator at all — we return the honest message. This makes
-  hallucination structurally impossible in the gap case, which is the cleanest
-  governance claim.
+- **Gap detection uses two gates.** Scores below threshold skip generation.
+  High-score but irrelevant retrievals must pass Sonnet's explicit
+  `is_supported` check; rejected drafts and citations are discarded and logged
+  as gaps.
 - **Merged API contract.** The contract combines a visual/stateful frontend
   proposal (`visual_data`, `next_step_hint`, `current_state`) with a
   trust/governance proposal (`citations`, `confidence`, `is_gap`). All fields
@@ -234,9 +237,10 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 
 - **Figure sourcing path.** Keep the static hotspot map, or invest in real
   figure auto-tagging at ingestion? (MVP = static.)
-- **Gap threshold tuning.** `0.79` separates the committed live smoke queries,
-  but retrieval scores overlap for some unrelated questions. Keep measuring
-  known-answer and known-gap sets before claiming universal calibration.
+- **Gap score behavior.** Scores are not monotonic enough to decide grounding:
+  a supported Guardrails query scored `0.341`, while an irrelevant lab-safety
+  query scored `0.833`. The `0.20` cutoff only avoids generation for empty or
+  very weak retrieval; Sonnet's `is_supported` result is the final decision.
 - **Streaming.** Add `converse_stream` for a typing effect in the demo? (Stretch.)
 - **Bedrock Guardrails.** Attach a Guardrail for an extra governance layer
   (PII redaction, denied topics)? Strong fit for the judging criteria. (Stretch.)
@@ -301,3 +305,13 @@ hunting for inline TODOs.
   PowerShell's `curl` alias (`Invoke-WebRequest`) does not misdecode Japanese.
 - Added a regression test and verified the running `/faq` endpoint displays
   Japanese correctly through `Invoke-WebRequest`.
+
+### 2026-06-27 — Groundedness audit for high-score retrievals
+- Reproduced a false non-gap where an unrelated AWS manual scored `0.833` for a
+  lab-safety question, exceeding the `0.79` threshold.
+- Added a required `is_supported` field to Sonnet's structured output. Answers
+  without direct support now discard the draft and citations, return confidence
+  `0.0`, set `is_gap=true`, and enter the gap store.
+- Recalibrated `GAP_THRESHOLD` to `0.20` after proving the KB scores were not
+  monotonic enough for a threshold-only grounding decision.
+- Verified the live lab-safety request now returns the honest gap contract.

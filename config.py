@@ -117,7 +117,7 @@ class Settings:
                 "RAG_MODEL_ARN", default_rag_arn, "MODEL_SMART_ARN"
             ),
             gap_threshold=_bounded_float(
-                "GAP_THRESHOLD", _env("GAP_THRESHOLD", "0.79"), 0.0, 1.0
+                "GAP_THRESHOLD", _env("GAP_THRESHOLD", "0.20"), 0.0, 1.0
             ),
             num_results=_positive_int("NUM_RESULTS", _env("NUM_RESULTS", "5")),
             history_limit=_positive_int(
