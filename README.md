@@ -1,170 +1,261 @@
-# Lab Tacit-Knowledge AI Agent — Backend
+# Lab AI Knowledge Agent — Backend
 
-研究室の暗黙知を継承するAIナレッジエージェント — backend service.
-
-A retrieval-augmented (RAG) agent on **Amazon Bedrock** that answers new
-students' questions from a research lab's own documents, **cites its sources**,
-and — the signature feature — **detects knowledge gaps**: when the lab has no
-documented answer, it says so honestly and logs the question for a professor to
-review instead of guessing.
-
-> New here? Read **[PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)** first — it is the
-> single source of truth for the project's state, decisions, and open questions.
-> For the HTTP contract, see **[API.md](API.md)**.
+An AI assistant that answers questions about the lab using uploaded documents (RAG on Amazon Bedrock). If it doesn't know the answer, it says so honestly and logs the question for a professor to review — instead of making something up.
 
 ---
 
-## Quick start
+## For the Frontend Team
 
-You need **Python 3.10+** and AWS access to the Bedrock resources (see below).
+You don't need to understand the Python code at all. Just run the server locally (steps below) and call the API. The full API contract is in [API.md](API.md).
 
-### 1. Clone and enter the repo
-```bash
-git clone git@github.com:Kenmini/backend.git
-cd backend
+Base URL: `http://localhost:8000`  
+All requests and responses are JSON.  
+Interactive API explorer (auto-generated): [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## Setup (Windows)
+
+### 1. Make sure you have Python installed
+```powershell
+python --version
+# should be 3.10 or higher
 ```
 
-### 2. Create a virtual environment and install deps
-
-**macOS / Linux**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+### 2. Navigate to the backend folder and activate the virtual environment
+```powershell
+cd C:\path\to\umpjust\backend
+.venv\Scripts\activate.bat
 ```
 
-**Windows (PowerShell)**
+If `.venv` doesn't exist yet, create it first:
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
-### 3. Provide AWS credentials (pick ONE)
-
-**Option A — `aws configure` (preferred).** boto3 picks these up automatically.
-```bash
+### 3. Set up AWS credentials
+Run this once — boto3 picks it up automatically after that.
+```powershell
 aws configure
 # AWS Access Key ID:     <your key>
 # AWS Secret Access Key: <your secret>
-# Default region name:   us-east-1      <-- IMPORTANT: us-east-1, not Tokyo
-# Default output format:  json
+# Default region name:   us-east-1     <-- must be us-east-1, not Tokyo
+# Default output format: json
 ```
 
-**Option B — local `.env` file.** Copy the example and fill it in. `.env` is
-gitignored and must never be committed.
-```bash
-cp .env.example .env        # macOS/Linux
-copy .env.example .env      # Windows
-```
-Then edit `.env` and set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
-
-> Credentials are **never** stored in source. They come only from the AWS
-> credential chain or `.env` at runtime.
-
-### 4. Run the server
-```bash
+### 4. Start the server
+```powershell
 uvicorn main:app --reload --port 8000
 ```
 
 ![Server running](images/server-running.png)
 
-### 5. Verify it's up
-```bash
+### 5. Verify it's working
+```powershell
 curl http://localhost:8000/health
-# {"status":"ok"}
-```
-Interactive API docs (auto-generated): <http://localhost:8000/docs>
-
----
-
-## Try it
-
-```bash
-# Ask a question (returns the full contract: answer, citations, confidence,
-# is_gap, visual_data, next_step_hint)
-curl -X POST http://localhost:8000/ask \
-  -H "Content-Type: application/json" \
-  -d '{"message":"輝度つまみはどこですか？","session_id":"s1","current_state":{"active_figure_id":"panel_01"}}'
-
-# Review detected knowledge gaps (for professors)
-curl http://localhost:8000/gaps
 ```
 
-> **Expected before the Knowledge Base is synced:** every `/ask` returns
-> `is_gap: true` with an honest "not documented yet" message. That is correct —
-> the KB returns nothing until documents are uploaded to the `bedrock-docs` S3
-> source **and** the **Sync** button is pressed in the Bedrock console. See
-> *Current status* in [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+![Health check response](images/health-check.png)
+
+You should see `{"status":"ok"}`. You're good to go.
 
 ---
 
-## AWS resources (identifiers, not secrets)
+## API Endpoints
 
-| Item | Value |
-|------|-------|
-| Region | **us-east-1** (N. Virginia) |
-| Knowledge Base ID | `AJVVEPYMSH` |
-| Data source (S3) | `bedrock-docs` (must be **Synced** after uploads) |
-| Smart model | `us.anthropic.claude-sonnet-4-6` |
-| Fast model | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+### `POST /ask` — Ask the AI a question
 
-You need a role/user with Bedrock permissions: `bedrock:Retrieve`,
-`bedrock:RetrieveAndGenerate`, and `bedrock:InvokeModel` (plus `Converse` for
-the advanced path), and model access granted for the two models in us-east-1.
+This is the main endpoint. Send a question, get an answer with citations.
+
+**Request:**
+```json
+{
+  "message": "輝度つまみはどこですか？",
+  "session_id": "session_123",
+  "current_state": { "active_figure_id": "panel_01" }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `message` | yes | The question (any language, Japanese expected) |
+| `session_id` | no | Any string to identify the session |
+| `current_state.active_figure_id` | no | Which figure the user is viewing (`panel_01` by default) |
+
+**Response (answer found):**
+```json
+{
+  "answer_text": "照射系を調整するには、パネル右上の輝度つまみを時計回りに回します。",
+  "next_step_hint": "次に、対物レンズのフォーカスを確認してください。",
+  "visual_data": { "figure_id": "panel_01", "highlight_item": "輝度つまみ" },
+  "citations": [
+    { "source": "顕微鏡マニュアル.pdf", "snippet": "輝度つまみはパネル右上にあり…" }
+  ],
+  "confidence": 0.82,
+  "is_gap": false
+}
+```
+
+**Response (answer not found — knowledge gap):**
+```json
+{
+  "answer_text": "ご質問の内容は、まだ研究室の資料に記録されていないようです。この質問は記録しましたので、先生が後で確認できます。",
+  "next_step_hint": null,
+  "visual_data": { "figure_id": "panel_01", "highlight_item": null },
+  "citations": [],
+  "confidence": 0.12,
+  "is_gap": true
+}
+```
+
+| Response Field | Description |
+|----------------|-------------|
+| `answer_text` | The answer, or an honest "I don't know" if undocumented |
+| `visual_data.highlight_item` | A hotspot name to highlight on the figure (or `null`) |
+| `citations` | Source documents the answer is based on |
+| `confidence` | 0.0–1.0 score. Below 0.4 = knowledge gap |
+| `is_gap` | `true` means no documented answer — question is logged for professors |
+
+**Valid figure IDs and hotspot names for `visual_data`:**
+
+| `figure_id` | Valid `highlight_item` values |
+|-------------|-------------------------------|
+| `panel_01` | 輝度つまみ, 対物レンズ, フォーカスノブ, ステージ, 電源スイッチ |
+| `microscope_overview` | 接眼レンズ, 対物レンズ, ステージ, 光源, 粗動ハンドル, 微動ハンドル |
+| `control_panel` | 電源スイッチ, 輝度つまみ, シャッターボタン, 緊急停止ボタン |
 
 ---
 
-## Configuration
+### `GET /gaps` — View unanswered questions (for professors)
 
-All config lives in [`config.py`](config.py) and every value can be overridden
-with an environment variable (see [`.env.example`](.env.example)):
+Returns all questions the AI couldn't answer, sorted by how often they were asked.
 
-| Env var | Default | Meaning |
-|---------|---------|---------|
-| `AWS_REGION` | `us-east-1` | AWS region for all clients |
-| `KB_ID` | `AJVVEPYMSH` | Bedrock Knowledge Base id |
-| `MODEL_SMART` | `us.anthropic.claude-sonnet-4-6` | Main answer model |
-| `MODEL_FAST` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | FAQ/bulk model |
-| `MODEL_SMART_ARN` | foundation-model ARN | Model ARN for retrieve_and_generate |
-| `GAP_THRESHOLD` | `0.4` | Below this top-score → knowledge gap |
-| `ANSWER_PATH` | `easy` | `easy` (retrieve_and_generate) or `advanced` (retrieve+converse) |
-| `NUM_RESULTS` | `5` | Chunks to retrieve |
+**Response:**
+```json
+{
+  "gaps": [
+    { "question": "懇親会の予算は？", "count": 3, "first_seen": "2026-06-27T09:30:00+00:00" },
+    { "question": "古い液体窒素タンクの場所は？", "count": 1, "first_seen": "2026-06-27T10:05:00+00:00" }
+  ]
+}
+```
 
-### Easy vs. advanced answer path
-- **easy** (default): one managed `retrieve_and_generate` call after a quick
-  `retrieve` for the gap score. Least code.
-- **advanced**: `retrieve` + `converse` with a custom Japanese system prompt and
-  per-session history. Set `ANSWER_PATH=advanced` to enable.
+---
+
+### `POST /onboarding` — Generate an onboarding guide
+
+Generates a role-specific onboarding guide from lab documents.
+
+**Request:**
+```json
+{ "role": "M1", "field": "光学" }
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `role` | yes | `"M1"` or `"D1"` |
+| `field` | no | Research field to tailor the guide |
+
+**Response:**
+```json
+{ "guide": "M1向けオンボーディングガイド\n\n1. 最初の1週間でやるべきこと…" }
+```
+
+---
+
+### `GET /faq` — Get frequently asked questions
+
+**Response:**
+```json
+{
+  "items": [
+    { "q": "研究室のコアタイムは何時ですか？", "a": "コアタイムは研究室の資料を確認してください。" }
+  ]
+}
+```
+
+---
+
+### `POST /feedback` — Submit a thumbs up/down on an answer
+
+**Request:**
+```json
+{
+  "session_id": "session_123",
+  "message": "輝度つまみはどこですか？",
+  "rating": "up",
+  "note": "分かりやすかった"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `session_id` | yes | Session ID from the `/ask` call |
+| `message` | yes | The question being rated |
+| `rating` | yes | `"up"` or `"down"` |
+| `note` | no | Optional comment |
+
+**Response:**
+```json
+{ "ok": true }
+```
+
+---
+
+### `GET /health` — Check if the server is running
+
+```json
+{ "status": "ok" }
+```
+
+No AWS calls — safe to poll at any frequency.
 
 ---
 
 ## Troubleshooting
 
-- **Validation error about on-demand throughput** on `/ask`: Sonnet 4.6 is an
-  inference-profile model. Set in `.env`:
-  ```
-  MODEL_SMART_ARN=arn:aws:bedrock:us-east-1:465239007752:inference-profile/us.anthropic.claude-sonnet-4-6
-  ```
-- **Everything returns `is_gap: true`:** the KB isn't synced — upload to the
-  `bedrock-docs` S3 source and press **Sync**.
-- **`AccessDeniedException` / `UnrecognizedClientException`:** credentials or
-  region wrong. Confirm `aws sts get-caller-identity` works and region is
-  `us-east-1`. Model access must be granted in the Bedrock console.
-- **`ResourceNotFoundException`:** wrong `KB_ID`, or you're pointed at the wrong
-  region (Tokyo instead of N. Virginia).
+**Everything returns `is_gap: true`**  
+The Knowledge Base hasn't been synced yet. Documents need to be uploaded to the `bedrock-docs` S3 bucket and **Sync** pressed in the Bedrock console. This is expected until that's done.
+
+**`AccessDeniedException` or credentials error**  
+Run `aws sts get-caller-identity` to verify your credentials work. Make sure the region is `us-east-1`.
+
+**Validation error about on-demand throughput on `/ask`**  
+Add this to a `.env` file in the backend folder:
+```
+MODEL_SMART_ARN=arn:aws:bedrock:us-east-1:465239007752:inference-profile/us.anthropic.claude-sonnet-4-6
+```
+
+**`curl` in PowerShell shows a security warning**  
+That's Windows aliasing `curl` to `Invoke-WebRequest`. Either type `A` to continue, or use the real curl by running:
+```powershell
+curl.exe http://localhost:8000/health
+```
 
 ---
 
-## Project layout
+## AWS Resources
 
-| File | Purpose |
-|------|---------|
-| `main.py` | FastAPI app, routes, Pydantic models |
-| `bedrock.py` | All Bedrock calls; `answer()` dispatcher (easy/advanced) |
-| `config.py` | Central config, env overrides, no secrets |
-| `prompts.py` | Japanese system prompt, RAG/onboarding templates, gap message |
-| `gaps.py` | Knowledge-gap store (`gaps.json`) |
-| `figures.py` | Demo figures + hotspots that constrain `visual_data` |
-| `API.md` | Full HTTP API reference |
-| `PROJECT_CONTEXT.md` | Living source of truth — read first, update last |
+| Item | Value |
+|------|-------|
+| Region | `us-east-1` (N. Virginia) |
+| Knowledge Base ID | `AJVVEPYMSH` |
+| S3 bucket | `bedrock-docs` |
+| Main model | `us.anthropic.claude-sonnet-4-6` |
+| Fast model | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+
+---
+
+## Project Files
+
+| File | What it does |
+|------|--------------|
+| `main.py` | FastAPI app and all routes |
+| `bedrock.py` | All calls to Amazon Bedrock |
+| `config.py` | Configuration and environment variables |
+| `prompts.py` | Japanese system prompts and templates |
+| `gaps.py` | Knowledge-gap storage (`gaps.json`) |
+| `figures.py` | Figure definitions and hotspot lists |
+| `API.md` | Full API reference |
