@@ -338,3 +338,21 @@ hunting for inline TODOs.
   themes, with pinned reproducible SVG/PNG rendering and visual QA.
 - Expanded the hosting/runbook/API documentation and verified 45 tests at
   89.51% application coverage plus all 12 deep smoke scenarios.
+
+### 2026-06-28 — Full code audit and recovery hardening
+- Prevented missing or empty files from being accepted as valid application
+  databases and made backup/restore replacement atomic so failed copies cannot
+  destroy an existing snapshot or active database.
+- Preserved distinct safety copies and backup snapshots when multiple recovery
+  commands run within the same second, and validated retention before writing.
+- Made malformed legacy gap imports non-fatal and resolved fixture files
+  independently of the caller's working directory.
+- Rejected wrong AWS regions, blank required Bedrock identifiers, and malformed
+  public CORS origins during startup validation.
+- Made `/ready` degrade safely when dependency checks raise and converted empty
+  managed-RAG output into the normal safe provider-failure response.
+- Added shared PowerShell environment restoration, native exit propagation, and
+  verified UTF-8 byte serialization so smoke and launch scripts do not pollute
+  the caller's shell or corrupt Japanese requests.
+- Removed the fixed deep-smoke port, added regression coverage for every
+  reproduced defect, and formatted/import-sorted the Python codebase.

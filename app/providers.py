@@ -5,10 +5,9 @@ from typing import Protocol
 import boto3
 from botocore.config import Config as BotoConfig
 
+import prompts
 from app.models import AnswerResult, Citation, HistoryTurn
 from config import Settings
-import prompts
-
 
 ONBOARDING_GAP_GUIDE = (
     "オンボーディング資料がまだ登録されていません。"
@@ -62,13 +61,13 @@ def _retrieval_citations(results: list[dict]) -> list[Citation]:
 def _generated_citations(raw: list[dict]) -> list[Citation]:
     citations: list[Citation] = []
     for item in raw:
-        for reference in item.get("retrievedReferences", []):
-            citations.append(
-                Citation(
-                    source=_source_name(reference.get("location", {})),
-                    snippet=reference.get("content", {}).get("text", "")[:300],
-                )
+        citations.extend(
+            Citation(
+                source=_source_name(reference.get("location", {})),
+                snippet=reference.get("content", {}).get("text", "")[:300],
             )
+            for reference in item.get("retrievedReferences", [])
+        )
     return citations
 
 
@@ -141,8 +140,11 @@ class BedrockAnswerProvider:
                 },
             },
         )
+        answer_text = response.get("output", {}).get("text", "")
+        if not isinstance(answer_text, str) or not answer_text.strip():
+            raise ValueError("Bedrock returned an empty answer")
         return AnswerResult(
-            answer_text=response.get("output", {}).get("text", ""),
+            answer_text=answer_text,
             citations=_generated_citations(response.get("citations", [])),
             confidence=round(score, 3),
         )
@@ -269,7 +271,11 @@ class FixtureAnswerProvider:
     name = "fixture"
 
     def __init__(self, fixture_path: str | Path | None = None):
-        path = Path(fixture_path or "fixtures/demo_answers.json")
+        path = (
+            Path(fixture_path)
+            if fixture_path is not None
+            else Path(__file__).resolve().parents[1] / "fixtures" / "demo_answers.json"
+        )
         self.fixtures = json.loads(path.read_text(encoding="utf-8"))
 
     def configured(self) -> bool:

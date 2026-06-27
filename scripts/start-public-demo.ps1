@@ -13,16 +13,32 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "runtime-env.ps1")
 $python = Join-Path $root ".venv\Scripts\python.exe"
 $backend = $null
 $tunnel = $null
 $tunnelOut = Join-Path $env:TEMP ("umpjust-cloudflared-{0}.out.log" -f [guid]::NewGuid())
 $tunnelError = Join-Path $env:TEMP ("umpjust-cloudflared-{0}.error.log" -f [guid]::NewGuid())
+$environment = Save-ProcessEnvironment @(
+    "APP_MODE",
+    "ANSWER_PATH",
+    "PUBLIC_DEMO",
+    "DEMO_API_TOKEN",
+    "CORS_ORIGINS",
+    "STORAGE_MODE",
+    "DATABASE_PATH"
+)
 
 function Assert-ValidOrigin([string]$Origin) {
     $uri = $null
     $valid = [Uri]::TryCreate($Origin, [UriKind]::Absolute, [ref]$uri)
-    if (-not $valid -or $uri.Scheme -notin @("http", "https") -or $Origin.Contains("*")) {
+    $canonical = if ($valid) { "$($uri.Scheme)://$($uri.Authority)" } else { "" }
+    if (
+        -not $valid -or
+        $uri.Scheme -notin @("http", "https") -or
+        $Origin.Contains("*") -or
+        $Origin -ne $canonical
+    ) {
         throw "Invalid frontend origin: $Origin"
     }
 }
@@ -146,6 +162,5 @@ try {
     if ($backend -and -not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
     Remove-Item -LiteralPath $tunnelOut, $tunnelError -Force -ErrorAction SilentlyContinue
     Pop-Location -ErrorAction SilentlyContinue
-    Remove-Item Env:DEMO_API_TOKEN -ErrorAction SilentlyContinue
-    Remove-Item Env:PUBLIC_DEMO -ErrorAction SilentlyContinue
+    Restore-ProcessEnvironment $environment
 }

@@ -4,7 +4,6 @@ from app.models import AnswerResult, Interaction
 from app.providers import AnswerProvider
 from app.repositories import Repository
 
-
 logger = logging.getLogger(__name__)
 
 SAFE_ANSWER = (

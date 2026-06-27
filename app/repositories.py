@@ -1,13 +1,14 @@
+import json
+import shutil
+import sqlite3
 from collections import defaultdict
 from contextlib import closing
 from dataclasses import asdict
 from datetime import datetime, timezone
-import json
 from pathlib import Path
-import shutil
-import sqlite3
 from threading import RLock
 from typing import Protocol
+from uuid import uuid4
 
 from app.models import Gap, HistoryTurn, Interaction
 
@@ -154,7 +155,10 @@ class SQLiteRepository:
         with closing(self._connect()) as connection:
             connection.executescript(SCHEMA)
             connection.execute(
-                "INSERT OR IGNORE INTO schema_versions(version, applied_at) VALUES(1, ?)",
+                """
+                INSERT OR IGNORE INTO schema_versions(version, applied_at)
+                VALUES(1, ?)
+                """,
                 (_now(),),
             )
             connection.commit()
@@ -166,18 +170,28 @@ class SQLiteRepository:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return
+        if not isinstance(raw, dict):
+            return
         with closing(self._connect()) as connection:
             count = connection.execute("SELECT COUNT(*) FROM gaps").fetchone()[0]
             if count:
                 return
             for question, value in raw.items():
+                if not isinstance(question, str) or not question.strip():
+                    continue
+                if not isinstance(value, dict):
+                    continue
                 first_seen = value.get("first_seen") or _now()
+                try:
+                    gap_count = max(1, int(value.get("count", 1)))
+                except (TypeError, ValueError):
+                    continue
                 connection.execute(
                     """
                     INSERT OR IGNORE INTO gaps(question, count, first_seen, last_seen)
                     VALUES(?, ?, ?, ?)
                     """,
-                    (question, max(1, int(value.get("count", 1))), first_seen, first_seen),
+                    (question.strip(), gap_count, first_seen, first_seen),
                 )
             connection.commit()
 
@@ -279,24 +293,60 @@ class SQLiteRepository:
                 """,
                 (session_id, self.history_limit),
             ).fetchall()
-        return [HistoryTurn(row["user_message"], row["assistant_message"]) for row in rows]
+        return [
+            HistoryTurn(row["user_message"], row["assistant_message"]) for row in rows
+        ]
 
 
 def check_integrity(path: str | Path) -> str:
-    with closing(sqlite3.connect(Path(path))) as connection:
-        return connection.execute("PRAGMA integrity_check").fetchone()[0]
+    database = Path(path)
+    if not database.exists():
+        raise FileNotFoundError(database)
+    if not database.is_file():
+        raise ValueError(f"Database path is not a file: {database}")
+    with closing(sqlite3.connect(database)) as connection:
+        result = connection.execute("PRAGMA integrity_check").fetchone()[0]
+        if result != "ok":
+            return result
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        required = {"schema_versions", "gaps", "feedback", "interactions"}
+        if not required.issubset(tables):
+            return "missing application schema"
+        version = connection.execute(
+            "SELECT MAX(version) FROM schema_versions"
+        ).fetchone()[0]
+        if version is None or version < 1:
+            return "missing schema version"
+        return "ok"
 
 
 def backup_database(source: str | Path, destination: str | Path) -> Path:
     source_path = Path(source)
     destination_path = Path(destination)
+    if source_path.resolve() == destination_path.resolve():
+        raise ValueError("Backup source and destination must be different")
+    if check_integrity(source_path) != "ok":
+        raise RuntimeError("Source database integrity check failed")
     destination_path.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(source_path)) as source_connection:
-        with closing(sqlite3.connect(destination_path)) as destination_connection:
+    temporary_path = destination_path.with_name(
+        f".{destination_path.name}.{uuid4().hex}.tmp"
+    )
+    try:
+        with (
+            closing(sqlite3.connect(source_path)) as source_connection,
+            closing(sqlite3.connect(temporary_path)) as destination_connection,
+        ):
             source_connection.backup(destination_connection)
-    if check_integrity(destination_path) != "ok":
-        destination_path.unlink(missing_ok=True)
-        raise RuntimeError("Backup integrity check failed")
+        if check_integrity(temporary_path) != "ok":
+            raise RuntimeError("Backup integrity check failed")
+        temporary_path.replace(destination_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
     return destination_path
 
 
@@ -305,6 +355,8 @@ def restore_database(
 ) -> Path:
     source_path = Path(source)
     destination_path = Path(destination)
+    if source_path.resolve() == destination_path.resolve():
+        raise ValueError("Restore source and destination must be different")
     if check_integrity(source_path) != "ok":
         raise RuntimeError("Source backup integrity check failed")
     if destination_path.exists() and not overwrite:
@@ -314,11 +366,25 @@ def restore_database(
         safety_copy = destination_path.with_name(
             f"{destination_path.stem}.pre-restore-{timestamp}{destination_path.suffix}"
         )
+        counter = 1
+        while safety_copy.exists():
+            safety_copy = destination_path.with_name(
+                f"{destination_path.stem}.pre-restore-{timestamp}-{counter}"
+                f"{destination_path.suffix}"
+            )
+            counter += 1
         backup_database(destination_path, safety_copy)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
-    for suffix in ("-wal", "-shm"):
-        Path(f"{destination_path}{suffix}").unlink(missing_ok=True)
-    shutil.copy2(source_path, destination_path)
-    if check_integrity(destination_path) != "ok":
-        raise RuntimeError("Restored database integrity check failed")
+    temporary_path = destination_path.with_name(
+        f".{destination_path.name}.{uuid4().hex}.restore.tmp"
+    )
+    try:
+        shutil.copy2(source_path, temporary_path)
+        if check_integrity(temporary_path) != "ok":
+            raise RuntimeError("Restored database integrity check failed")
+        for suffix in ("-wal", "-shm"):
+            Path(f"{destination_path}{suffix}").unlink(missing_ok=True)
+        temporary_path.replace(destination_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
     return destination_path

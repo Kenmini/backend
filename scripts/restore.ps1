@@ -8,6 +8,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Push-Location $root
 try {
     & ".venv\Scripts\python.exe" -m app.database_cli restore $Backup --overwrite
+    if ($LASTEXITCODE -ne 0) { throw "Database restore failed" }
 } finally {
     Pop-Location
 }

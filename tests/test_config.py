@@ -4,8 +4,9 @@ import pytest
 
 import config as runtime_config
 
-
 ENV_NAMES = (
+    "AWS_REGION",
+    "KB_ID",
     "APP_MODE",
     "ANSWER_PATH",
     "STORAGE_MODE",
@@ -40,10 +41,7 @@ def test_settings_have_safe_hackathon_defaults():
     assert settings.answer_path == "advanced"
     assert settings.storage_mode == "sqlite"
     assert settings.ask_model_id == "us.anthropic.claude-sonnet-4-6"
-    assert (
-        settings.onboarding_model_id
-        == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-    )
+    assert settings.onboarding_model_id == "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     assert settings.history_limit == 10
     assert settings.gap_threshold == 0.2
     assert settings.public_demo is False
@@ -107,9 +105,7 @@ def test_public_demo_accepts_explicit_origins_and_rate_limit(monkeypatch):
     config = runtime_config
     monkeypatch.setenv("PUBLIC_DEMO", "true")
     monkeypatch.setenv("DEMO_API_TOKEN", "x" * 32)
-    monkeypatch.setenv(
-        "CORS_ORIGINS", "https://frontend.example,http://localhost:5173"
-    )
+    monkeypatch.setenv("CORS_ORIGINS", "https://frontend.example,http://localhost:5173")
     monkeypatch.setenv("MODEL_RATE_LIMIT_PER_MINUTE", "12")
 
     settings = config.Settings.from_env(load_dotenv_file=False)
@@ -121,3 +117,36 @@ def test_public_demo_accepts_explicit_origins_and_rate_limit(monkeypatch):
         "http://localhost:5173",
     )
     assert settings.model_rate_limit_per_minute == 12
+
+
+def test_settings_reject_region_outside_bedrock_resources(monkeypatch):
+    monkeypatch.setenv("AWS_REGION", "ap-northeast-1")
+
+    with pytest.raises(ValueError, match="AWS_REGION must be us-east-1"):
+        runtime_config.Settings.from_env(load_dotenv_file=False)
+
+
+@pytest.mark.parametrize("name", ["KB_ID", "ASK_MODEL_ID", "ONBOARDING_MODEL_ID"])
+def test_settings_reject_empty_required_identifiers(monkeypatch, name):
+    monkeypatch.setenv(name, "")
+
+    with pytest.raises(ValueError, match=name):
+        runtime_config.Settings.from_env(load_dotenv_file=False)
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://frontend.example/path",
+        "https://frontend.example?query=yes",
+        "https://user:password@frontend.example",
+        "ftp://frontend.example",
+    ],
+)
+def test_public_demo_rejects_values_that_are_not_origins(monkeypatch, origin):
+    monkeypatch.setenv("PUBLIC_DEMO", "true")
+    monkeypatch.setenv("DEMO_API_TOKEN", "x" * 32)
+    monkeypatch.setenv("CORS_ORIGINS", origin)
+
+    with pytest.raises(ValueError, match="CORS_ORIGINS"):
+        runtime_config.Settings.from_env(load_dotenv_file=False)

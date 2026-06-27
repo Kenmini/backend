@@ -1,6 +1,9 @@
 import importlib
 import importlib.util
 import json
+from datetime import datetime, timezone
+
+import pytest
 
 
 def _modules():
@@ -138,3 +141,138 @@ def test_overwrite_restore_creates_pre_restore_safety_copy(tmp_path):
     restored_repo = repositories.SQLiteRepository(destination, history_limit=10)
     assert safety_repo.list_gaps()[0].question == "current data"
     assert restored_repo.list_gaps()[0].question == "backup data"
+
+
+def test_integrity_check_does_not_create_a_missing_database(tmp_path):
+    _, repositories = _modules()
+    missing = tmp_path / "missing.db"
+
+    with pytest.raises(FileNotFoundError):
+        repositories.check_integrity(missing)
+
+    assert not missing.exists()
+
+
+def test_backup_rejects_a_missing_source_without_creating_files(tmp_path):
+    _, repositories = _modules()
+    missing = tmp_path / "missing.db"
+    backup = tmp_path / "backup.db"
+
+    with pytest.raises(FileNotFoundError):
+        repositories.backup_database(missing, backup)
+
+    assert not missing.exists()
+    assert not backup.exists()
+
+
+def test_backup_rejects_an_empty_file_that_is_not_an_application_database(tmp_path):
+    _, repositories = _modules()
+    empty = tmp_path / "empty.db"
+    empty.touch()
+    backup = tmp_path / "backup.db"
+
+    with pytest.raises(RuntimeError, match="integrity"):
+        repositories.backup_database(empty, backup)
+
+    assert not backup.exists()
+
+
+def test_failed_backup_does_not_destroy_an_existing_snapshot(tmp_path, monkeypatch):
+    _, repositories = _modules()
+    source = tmp_path / "source.db"
+    source_repository = repositories.SQLiteRepository(source, history_limit=10)
+    source_repository.log_gap("new data")
+    destination = tmp_path / "snapshot.db"
+    old_repository = repositories.SQLiteRepository(destination, history_limit=10)
+    old_repository.log_gap("old data")
+    real_check = repositories.check_integrity
+
+    def reject_new_snapshot(path):
+        path = type(destination)(path)
+        if path == destination or path.name.startswith(".snapshot.db."):
+            return "simulated corruption"
+        return real_check(path)
+
+    monkeypatch.setattr(repositories, "check_integrity", reject_new_snapshot)
+
+    with pytest.raises(RuntimeError, match="integrity"):
+        repositories.backup_database(source, destination)
+
+    preserved = repositories.SQLiteRepository(destination, history_limit=10)
+    assert preserved.list_gaps()[0].question == "old data"
+
+
+def test_restore_rejects_a_missing_source_without_overwriting_data(tmp_path):
+    _, repositories = _modules()
+    destination = tmp_path / "app.db"
+    current = repositories.SQLiteRepository(destination, history_limit=10)
+    current.log_gap("keep me")
+    missing = tmp_path / "missing.db"
+
+    with pytest.raises(FileNotFoundError):
+        repositories.restore_database(missing, destination, overwrite=True)
+
+    assert not missing.exists()
+    reopened = repositories.SQLiteRepository(destination, history_limit=10)
+    assert reopened.list_gaps()[0].question == "keep me"
+
+
+def test_malformed_legacy_gap_file_is_ignored(tmp_path):
+    _, repositories = _modules()
+    legacy = tmp_path / "gaps.json"
+    legacy.write_text("[]", encoding="utf-8")
+
+    repository = repositories.SQLiteRepository(
+        tmp_path / "app.db", history_limit=10, legacy_gaps_path=legacy
+    )
+
+    assert repository.is_ready()
+    assert repository.list_gaps() == []
+
+
+def test_repeated_restores_do_not_overwrite_safety_copies(tmp_path, monkeypatch):
+    _, repositories = _modules()
+
+    class FixedDateTime:
+        @classmethod
+        def now(cls, tz):
+            return datetime(2026, 6, 28, 0, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(repositories, "datetime", FixedDateTime)
+    destination = tmp_path / "app.db"
+    current = repositories.SQLiteRepository(destination, history_limit=10)
+    current.log_gap("original")
+    first_source = tmp_path / "first.db"
+    first = repositories.SQLiteRepository(first_source, history_limit=10)
+    first.log_gap("first")
+    second_source = tmp_path / "second.db"
+    second = repositories.SQLiteRepository(second_source, history_limit=10)
+    second.log_gap("second")
+
+    repositories.restore_database(first_source, destination, overwrite=True)
+    repositories.restore_database(second_source, destination, overwrite=True)
+
+    safety_copies = list(tmp_path.glob("app.pre-restore-*.db"))
+    assert len(safety_copies) == 2
+
+
+def test_failed_restore_copy_keeps_the_active_database(tmp_path, monkeypatch):
+    _, repositories = _modules()
+    destination = tmp_path / "app.db"
+    current = repositories.SQLiteRepository(destination, history_limit=10)
+    current.log_gap("active data")
+    source = tmp_path / "backup.db"
+    backup = repositories.SQLiteRepository(source, history_limit=10)
+    backup.log_gap("backup data")
+
+    def fail_after_partial_copy(source_path, destination_path):
+        type(destination)(destination_path).write_bytes(b"partial")
+        raise OSError("simulated copy failure")
+
+    monkeypatch.setattr(repositories.shutil, "copy2", fail_after_partial_copy)
+
+    with pytest.raises(OSError, match="copy failure"):
+        repositories.restore_database(source, destination, overwrite=True)
+
+    reopened = repositories.SQLiteRepository(destination, history_limit=10)
+    assert reopened.list_gaps()[0].question == "active data"

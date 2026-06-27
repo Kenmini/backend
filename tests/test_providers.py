@@ -1,7 +1,9 @@
-from dataclasses import replace
 import importlib
 import importlib.util
 import json
+from dataclasses import replace
+
+import pytest
 
 from app.models import HistoryTurn
 from config import Settings
@@ -44,9 +46,7 @@ class FakeAgentRuntime:
                             "content": {"text": "source text"},
                             "location": {
                                 "type": "S3",
-                                "s3Location": {
-                                    "uri": "s3://bedrock-docs/manual.pdf"
-                                },
+                                "s3Location": {"uri": "s3://bedrock-docs/manual.pdf"},
                             },
                         }
                     ]
@@ -201,6 +201,18 @@ def test_easy_path_remains_explicit_fallback():
     assert agent.generate_calls
 
 
+def test_easy_path_rejects_an_empty_generated_answer():
+    providers = _providers()
+    agent = FakeAgentRuntime()
+    agent.retrieve_and_generate = lambda **kwargs: {}
+    provider = providers.BedrockAnswerProvider(
+        settings(answer_path="easy"), agent, FakeRuntime()
+    )
+
+    with pytest.raises(ValueError, match="empty answer"):
+        provider.ask("question", [])
+
+
 def test_fixture_provider_has_known_answer_and_default_gap():
     providers = _providers()
     provider = providers.FixtureAnswerProvider()
@@ -213,3 +225,14 @@ def test_fixture_provider_has_known_answer_and_default_gap():
     assert unknown.is_gap is True
     assert "資料に記録" in unknown.answer_text
     assert "オンボーディング" in provider.onboarding("M1", "光学")
+
+
+def test_fixture_provider_default_path_is_independent_of_working_directory(
+    tmp_path, monkeypatch
+):
+    providers = _providers()
+    monkeypatch.chdir(tmp_path)
+
+    provider = providers.FixtureAnswerProvider()
+
+    assert provider.ask("輝度つまみはどこですか？", []).is_gap is False

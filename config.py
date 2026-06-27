@@ -1,8 +1,9 @@
 """Validated runtime configuration with compatibility aliases."""
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -52,6 +53,31 @@ def _boolean(name: str, value: str) -> bool:
     raise ValueError(f"{name} must be true or false")
 
 
+def _required(name: str, value: str) -> str:
+    value = value.strip()
+    if not value:
+        raise ValueError(f"{name} must not be empty")
+    return value
+
+
+def _validate_origin(origin: str) -> None:
+    try:
+        parsed = urlsplit(origin)
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError(f"CORS_ORIGINS contains an invalid origin: {origin}") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(f"CORS_ORIGINS contains an invalid origin: {origin}")
+
+
 @dataclass(frozen=True)
 class Settings:
     app_mode: str
@@ -84,11 +110,14 @@ class Settings:
         if load_dotenv_file:
             load_dotenv()
 
-        region = _env("AWS_REGION", "us-east-1")
-        account_id = _env("AWS_ACCOUNT_ID", "465239007752")
+        region = _required("AWS_REGION", _env("AWS_REGION", "us-east-1"))
+        if region != "us-east-1":
+            raise ValueError(
+                "AWS_REGION must be us-east-1 for the configured resources"
+            )
+        account_id = _required("AWS_ACCOUNT_ID", _env("AWS_ACCOUNT_ID", "465239007752"))
         default_rag_arn = (
-            f"arn:aws:bedrock:{region}::foundation-model/"
-            "anthropic.claude-sonnet-4-6"
+            f"arn:aws:bedrock:{region}::foundation-model/anthropic.claude-sonnet-4-6"
         )
         origins = tuple(
             item.strip()
@@ -106,11 +135,11 @@ class Settings:
                 raise ValueError("DEMO_API_TOKEN must be at least 32 characters")
             if "*" in origins:
                 raise ValueError("PUBLIC_DEMO does not allow wildcard CORS origins")
+            for origin in origins:
+                _validate_origin(origin)
 
         return cls(
-            app_mode=_choice(
-                "APP_MODE", _env("APP_MODE", "live"), {"live", "demo"}
-            ),
+            app_mode=_choice("APP_MODE", _env("APP_MODE", "live"), {"live", "demo"}),
             answer_path=_choice(
                 "ANSWER_PATH",
                 _env("ANSWER_PATH", "advanced"),
@@ -123,27 +152,32 @@ class Settings:
             ),
             aws_account_id=account_id,
             region=region,
-            kb_id=_env("KB_ID", "AJVVEPYMSH"),
-            ask_model_id=_env(
+            kb_id=_required("KB_ID", _env("KB_ID", "AJVVEPYMSH")),
+            ask_model_id=_required(
                 "ASK_MODEL_ID",
-                "us.anthropic.claude-sonnet-4-6",
-                "MODEL_SMART",
+                _env(
+                    "ASK_MODEL_ID",
+                    "us.anthropic.claude-sonnet-4-6",
+                    "MODEL_SMART",
+                ),
             ),
-            onboarding_model_id=_env(
+            onboarding_model_id=_required(
                 "ONBOARDING_MODEL_ID",
-                "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                "MODEL_FAST",
+                _env(
+                    "ONBOARDING_MODEL_ID",
+                    "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                    "MODEL_FAST",
+                ),
             ),
-            rag_model_arn=_env(
-                "RAG_MODEL_ARN", default_rag_arn, "MODEL_SMART_ARN"
+            rag_model_arn=_required(
+                "RAG_MODEL_ARN",
+                _env("RAG_MODEL_ARN", default_rag_arn, "MODEL_SMART_ARN"),
             ),
             gap_threshold=_bounded_float(
                 "GAP_THRESHOLD", _env("GAP_THRESHOLD", "0.20"), 0.0, 1.0
             ),
             num_results=_positive_int("NUM_RESULTS", _env("NUM_RESULTS", "5")),
-            history_limit=_positive_int(
-                "HISTORY_LIMIT", _env("HISTORY_LIMIT", "10")
-            ),
+            history_limit=_positive_int("HISTORY_LIMIT", _env("HISTORY_LIMIT", "10")),
             database_path=Path(_env("DATABASE_PATH", "data/app.db")),
             gaps_file=Path(_env("GAPS_FILE", "gaps.json")),
             aws_connect_timeout=_positive_int(
@@ -183,8 +217,7 @@ MODEL_SMART = SETTINGS.ask_model_id
 MODEL_FAST = SETTINGS.onboarding_model_id
 MODEL_SMART_ARN = SETTINGS.rag_model_arn
 MODEL_SMART_INFERENCE_PROFILE_ARN = (
-    f"arn:aws:bedrock:{REGION}:{AWS_ACCOUNT_ID}:"
-    f"inference-profile/{MODEL_SMART}"
+    f"arn:aws:bedrock:{REGION}:{AWS_ACCOUNT_ID}:inference-profile/{MODEL_SMART}"
 )
 GAP_THRESHOLD = SETTINGS.gap_threshold
 ANSWER_PATH = SETTINGS.answer_path

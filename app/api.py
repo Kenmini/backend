@@ -9,21 +9,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse
 
+import figures
 from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerProvider
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
 from app.security import SlidingWindowRateLimiter
 from app.services import KnowledgeService
 from config import Settings
-import figures
-
 
 logger = logging.getLogger(__name__)
 
 
 class CurrentState(BaseModel):
-    active_figure_id: Literal[
-        "panel_01", "microscope_overview", "control_panel"
-    ] | None = None
+    active_figure_id: (
+        Literal["panel_01", "microscope_overview", "control_panel"] | None
+    ) = None
 
 
 class AskRequest(BaseModel):
@@ -75,7 +74,10 @@ class FeedbackRequest(BaseModel):
 FAQ_ITEMS = [
     {
         "q": "研究室のコアタイムは何時ですか？",
-        "a": "コアタイムは研究室の資料を確認してください。記載がない場合は /ask で質問できます。",
+        "a": (
+            "コアタイムは研究室の資料を確認してください。"
+            "記載がない場合は /ask で質問できます。"
+        ),
     },
     {
         "q": "実験ノートはどこに保存しますか？",
@@ -194,9 +196,21 @@ def create_app(
 
     @app.get("/ready")
     def ready():
-        database = "ok" if repository.is_ready() else "error"
-        provider_status = "configured" if provider.configured() else "misconfigured"
-        status = "ready" if database == "ok" and provider_status == "configured" else "degraded"
+        try:
+            database = "ok" if repository.is_ready() else "error"
+        except Exception:
+            logger.exception("readiness_database_check_failed")
+            database = "error"
+        try:
+            provider_status = "configured" if provider.configured() else "misconfigured"
+        except Exception:
+            logger.exception("readiness_provider_check_failed")
+            provider_status = "misconfigured"
+        status = (
+            "ready"
+            if database == "ok" and provider_status == "configured"
+            else "degraded"
+        )
         return {
             "status": status,
             "mode": settings.app_mode,
@@ -236,7 +250,9 @@ def create_app(
                 ]
             }
         except Exception as exc:
-            raise HTTPException(503, "Knowledge gaps are temporarily unavailable") from exc
+            raise HTTPException(
+                503, "Knowledge gaps are temporarily unavailable"
+            ) from exc
 
     @app.post("/onboarding")
     def onboarding(request: OnboardingRequest):

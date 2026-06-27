@@ -1,7 +1,7 @@
+import time
 from collections import defaultdict, deque
 from math import ceil
 from threading import Lock
-import time
 
 
 class SlidingWindowRateLimiter:

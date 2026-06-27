@@ -1,6 +1,6 @@
-from dataclasses import replace
 import importlib
 import importlib.util
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
@@ -53,6 +53,11 @@ class BrokenRepository(MemoryRepository):
         raise OSError("database unavailable")
 
 
+class UnreadyRepository(MemoryRepository):
+    def is_ready(self):
+        raise OSError("database unavailable")
+
+
 def client(provider=None, repository=None):
     api = _api()
     settings = replace(
@@ -101,6 +106,14 @@ def test_health_readiness_and_request_id():
         "provider": "configured",
     }
     assert client().get("/health").json() == {"status": "ok"}
+
+
+def test_readiness_reports_degraded_when_repository_check_raises():
+    response = client(repository=UnreadyRepository(history_limit=10)).get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["database"] == "error"
 
 
 def test_ask_returns_contract_and_passes_session_history():
@@ -203,12 +216,10 @@ def test_public_demo_requires_token_but_keeps_health_public():
     assert test_client.get("/health").status_code == 200
     assert test_client.get("/ready").status_code == 401
     assert (
-        test_client.get("/ready", headers={"X-Demo-Token": "wrong"}).status_code
-        == 401
+        test_client.get("/ready", headers={"X-Demo-Token": "wrong"}).status_code == 401
     )
     assert (
-        test_client.get("/ready", headers={"X-Demo-Token": "t" * 32}).status_code
-        == 200
+        test_client.get("/ready", headers={"X-Demo-Token": "t" * 32}).status_code == 200
     )
 
 
