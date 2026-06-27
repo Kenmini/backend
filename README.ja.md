@@ -1,0 +1,261 @@
+# ラボAIナレッジエージェント — バックエンド
+
+アップロードされたラボの資料をもとに質問に答えるAIアシスタントです（Amazon Bedrock上のRAG）。答えがわからない場合は正直にそう伝え、教授が後で確認できるよう質問を記録します — でたらめな回答はしません。
+
+---
+
+## フロントエンドチームへ
+
+Pythonのコードを理解する必要はまったくありません。サーバーをローカルで起動（下記手順）して、APIを呼び出すだけでOKです。APIの仕様は [API.ja.md](API.ja.md) にまとめてあります。
+
+ベースURL: `http://localhost:8000`  
+リクエスト・レスポンスはすべてJSON形式です。  
+インタラクティブなAPIドキュメント（自動生成）: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## セットアップ（Windows）
+
+### 1. Pythonがインストールされているか確認
+```powershell
+python --version
+# 3.10以上であること
+```
+
+### 2. バックエンドフォルダに移動し、仮想環境を有効化
+```powershell
+cd C:\path\to\umpjust\backend
+.venv\Scripts\activate.bat
+```
+
+`.venv` がまだない場合は、先に作成してください：
+```powershell
+python -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r requirements.txt
+```
+
+### 3. AWSクレデンシャルを設定
+一度だけ実行すれば、以降はboto3が自動で読み込みます。
+```powershell
+aws configure
+# AWS Access Key ID:     <キーを入力>
+# AWS Secret Access Key: <シークレットを入力>
+# Default region name:   us-east-1     <-- 必ずus-east-1（東京ではない）
+# Default output format: json
+```
+
+### 4. サーバーを起動
+```powershell
+uvicorn main:app --reload --port 8000
+```
+
+![サーバー起動](images/server-running.png)
+
+### 5. 動作確認
+```powershell
+curl http://localhost:8000/health
+```
+
+![ヘルスチェック結果](images/health-check.png)
+
+`{"status":"ok"}` が返ってきたら成功です。
+
+---
+
+## APIエンドポイント一覧
+
+### `POST /ask` — AIに質問する
+
+メインのエンドポイントです。質問を送ると、回答と出典が返ってきます。
+
+**リクエスト:**
+```json
+{
+  "message": "輝度つまみはどこですか？",
+  "session_id": "session_123",
+  "current_state": { "active_figure_id": "panel_01" }
+}
+```
+
+| フィールド | 必須 | 説明 |
+|-----------|------|------|
+| `message` | はい | 質問文（日本語推奨） |
+| `session_id` | いいえ | セッションを識別する任意の文字列 |
+| `current_state.active_figure_id` | いいえ | ユーザーが見ている図のID（デフォルト: `panel_01`） |
+
+**レスポンス（回答あり）:**
+```json
+{
+  "answer_text": "照射系を調整するには、パネル右上の輝度つまみを時計回りに回します。",
+  "next_step_hint": "次に、対物レンズのフォーカスを確認してください。",
+  "visual_data": { "figure_id": "panel_01", "highlight_item": "輝度つまみ" },
+  "citations": [
+    { "source": "顕微鏡マニュアル.pdf", "snippet": "輝度つまみはパネル右上にあり…" }
+  ],
+  "confidence": 0.82,
+  "is_gap": false
+}
+```
+
+**レスポンス（回答なし — ナレッジギャップ）:**
+```json
+{
+  "answer_text": "ご質問の内容は、まだ研究室の資料に記録されていないようです。この質問は記録しましたので、先生が後で確認できます。",
+  "next_step_hint": null,
+  "visual_data": { "figure_id": "panel_01", "highlight_item": null },
+  "citations": [],
+  "confidence": 0.12,
+  "is_gap": true
+}
+```
+
+| レスポンスフィールド | 説明 |
+|-------------------|------|
+| `answer_text` | 回答文。資料に記録がない場合は正直な「わかりません」メッセージ |
+| `visual_data.highlight_item` | 図上でハイライトするホットスポット名（なければ `null`） |
+| `citations` | 回答の根拠となった出典資料 |
+| `confidence` | 0.0〜1.0のスコア。0.4未満はナレッジギャップと判定 |
+| `is_gap` | `true` = 資料に答えなし。質問は教授向けに記録される |
+
+**`visual_data` で使用できる図IDとホットスポット名:**
+
+| `figure_id` | 有効な `highlight_item` |
+|-------------|------------------------|
+| `panel_01` | 輝度つまみ, 対物レンズ, フォーカスノブ, ステージ, 電源スイッチ |
+| `microscope_overview` | 接眼レンズ, 対物レンズ, ステージ, 光源, 粗動ハンドル, 微動ハンドル |
+| `control_panel` | 電源スイッチ, 輝度つまみ, シャッターボタン, 緊急停止ボタン |
+
+---
+
+### `GET /gaps` — 未回答の質問を確認（教授向け）
+
+AIが答えられなかった質問を、質問回数が多い順に返します。
+
+**レスポンス:**
+```json
+{
+  "gaps": [
+    { "question": "懇親会の予算は？", "count": 3, "first_seen": "2026-06-27T09:30:00+00:00" },
+    { "question": "古い液体窒素タンクの場所は？", "count": 1, "first_seen": "2026-06-27T10:05:00+00:00" }
+  ]
+}
+```
+
+---
+
+### `POST /onboarding` — オンボーディングガイドを生成
+
+ラボの資料をもとに、役割別のオンボーディングガイドを生成します。
+
+**リクエスト:**
+```json
+{ "role": "M1", "field": "光学" }
+```
+
+| フィールド | 必須 | 説明 |
+|-----------|------|------|
+| `role` | はい | `"M1"` または `"D1"` |
+| `field` | いいえ | 研究分野（ガイドの内容を調整するために使用） |
+
+**レスポンス:**
+```json
+{ "guide": "M1向けオンボーディングガイド\n\n1. 最初の1週間でやるべきこと…" }
+```
+
+---
+
+### `GET /faq` — よくある質問を取得
+
+**レスポンス:**
+```json
+{
+  "items": [
+    { "q": "研究室のコアタイムは何時ですか？", "a": "コアタイムは研究室の資料を確認してください。" }
+  ]
+}
+```
+
+---
+
+### `POST /feedback` — 回答への評価を送信
+
+**リクエスト:**
+```json
+{
+  "session_id": "session_123",
+  "message": "輝度つまみはどこですか？",
+  "rating": "up",
+  "note": "分かりやすかった"
+}
+```
+
+| フィールド | 必須 | 説明 |
+|-----------|------|------|
+| `session_id` | はい | `/ask` 呼び出し時のセッションID |
+| `message` | はい | 評価対象の質問文 |
+| `rating` | はい | `"up"` または `"down"` |
+| `note` | いいえ | 任意のコメント |
+
+**レスポンス:**
+```json
+{ "ok": true }
+```
+
+---
+
+### `GET /health` — サーバーの起動確認
+
+```json
+{ "status": "ok" }
+```
+
+AWSへの通信なし — 頻繁にポーリングしても問題ありません。
+
+---
+
+## トラブルシューティング
+
+**すべて `is_gap: true` が返ってくる**  
+ナレッジベースがまだ同期されていません。`bedrock-docs` S3バケットに資料をアップロードし、BedrockコンソールでSync（同期）ボタンを押す必要があります。それまではこの動作が正常です。
+
+**`AccessDeniedException` またはクレデンシャルエラー**  
+`aws sts get-caller-identity` を実行してクレデンシャルが正常か確認してください。リージョンが `us-east-1` になっているかも確認してください。
+
+**`/ask` でon-demand throughputのバリデーションエラー**  
+バックエンドフォルダに `.env` ファイルを作成し、以下を追加してください：
+```
+MODEL_SMART_ARN=arn:aws:bedrock:us-east-1:465239007752:inference-profile/us.anthropic.claude-sonnet-4-6
+```
+
+**PowerShellで `curl` を使うとセキュリティ警告が出る**  
+WindowsがPowerShellの `curl` を `Invoke-WebRequest` にエイリアスしているためです。`A` を押して続行するか、本物のcurlを使ってください：
+```powershell
+curl.exe http://localhost:8000/health
+```
+
+---
+
+## AWSリソース
+
+| 項目 | 値 |
+|------|----|
+| リージョン | `us-east-1`（バージニア北部） |
+| ナレッジベースID | `AJVVEPYMSH` |
+| S3バケット | `bedrock-docs` |
+| メインモデル | `us.anthropic.claude-sonnet-4-6` |
+| 高速モデル | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+
+---
+
+## プロジェクトファイル構成
+
+| ファイル | 役割 |
+|---------|------|
+| `main.py` | FastAPIアプリと全ルート定義 |
+| `bedrock.py` | Amazon Bedrockへの全API呼び出し |
+| `config.py` | 設定と環境変数 |
+| `prompts.py` | 日本語システムプロンプトとテンプレート |
+| `gaps.py` | ナレッジギャップの保存（`gaps.json`） |
+| `figures.py` | 図の定義とホットスポット一覧 |
+| `API.ja.md` | APIリファレンス（日本語） |
