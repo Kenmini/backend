@@ -1,0 +1,7 @@
+# Backend dependencies for the Lab Tacit-Knowledge AI Agent.
+# Install with:  pip install -r requirements.txt
+fastapi>=0.110
+uvicorn[standard]>=0.27
+boto3>=1.34
+python-dotenv>=1.0
+pydantic>=2.6

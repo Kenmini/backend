@@ -1,45 +1,44 @@
-# Dependencies
-node_modules/
-jspm_packages/
-.pnp/
-.pnp.js
-.yarn/
-
-# Build output
-dist/
-build/
-out/
-*.tsbuildinfo
-
-# Environment & secrets
+# --- Secrets & credentials -------------------------------------------------
+# Never commit real credentials. boto3 reads them from `aws configure` or .env.
 .env
 .env.*
 !.env.example
 *.pem
+# AWS console credential dumps are exported as .csv / .txt — keep them out.
+*.csv
+*.txt
+# ...but the dependency list must stay tracked.
+!requirements.txt
 
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# --- Runtime data ----------------------------------------------------------
+# Local knowledge-gap store, written at runtime.
+gaps.json
 
-# Coverage & test output
-coverage/
-.nyc_output/
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
 
-# Caches
-.cache/
-.npm/
-.eslintcache
+# --- Virtual environments --------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
 
-# OS files
+# --- Tooling / caches ------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- OS / editor -----------------------------------------------------------
 .DS_Store
 Thumbs.db
-
-# Editor / IDE
 .vscode/
 .idea/
 *.swp
-
