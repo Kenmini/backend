@@ -314,37 +314,35 @@ def create_app(
                     static_result = static_image_renderer.render(result.visual_reference)
                     if static_result:
                         had_static_images = len(static_result.images) > 0
-                        # Keep only images relevant to this specific question/answer.
-                        relevance_query = " ".join(
-                            filter(
-                                None,
-                                [
-                                    result.visual_reference.caption,
-                                    request.message,
-                                    result.answer_text,
-                                ],
+                        # Judge relevance against the question + answer only.
+                        # The answer is what we actually show the user, and in
+                        # advanced mode it embeds Japanese manual quotes even for
+                        # English questions, which bridges the language gap. We
+                        # deliberately exclude the raw retrieved chunk (caption):
+                        # it is the page's own text and would always match that
+                        # page's images, surfacing unrelated diagrams when the
+                        # top-ranked chunk isn't actually about the question.
+                        relevance_query = f"{request.message} {result.answer_text}"
+                        relevant_images = filter_relevant_images(
+                            relevance_query,
+                            static_result.images,
+                            settings.visual_relevance_min,
+                        )
+                        static_images_response = [
+                            StaticImageResponse(
+                                image_url=img.image_url,
+                                filename=img.filename,
+                                name=img.name,
+                                description=img.description,
+                                page_number=img.page_number,
+                                highlights=img.highlights,
                             )
-                        )
-                    relevant_images = filter_relevant_images(
-                        relevance_query,
-                        static_result.images,
-                        settings.visual_relevance_min,
-                    )
-                    static_images_response = [
-                        StaticImageResponse(
-                            image_url=img.image_url,
-                            filename=img.filename,
-                            name=img.name,
-                            description=img.description,
-                            page_number=img.page_number,
-                            highlights=img.highlights,
-                        )
-                        for img in relevant_images
-                    ]
-                    source_name = static_result.source
-                    page_num = static_result.page_number
-                    caption = static_result.caption
-                    pdf_url = static_result.pdf_url
+                            for img in relevant_images
+                        ]
+                        source_name = static_result.source
+                        page_num = static_result.page_number
+                        caption = static_result.caption
+                        pdf_url = static_result.pdf_url
                 except Exception:
                     logger.exception(
                         "static_image_lookup_failed",

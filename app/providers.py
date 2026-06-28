@@ -1,4 +1,6 @@
 import json
+import logging
+import re
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -9,6 +11,16 @@ from botocore.config import Config as BotoConfig
 import prompts
 from app.models import AnswerResult, Citation, HistoryTurn, VisualReference
 from config import Settings
+
+logger = logging.getLogger(__name__)
+
+_JP_CHAR_RE = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+
+
+def _detect_language(text: str) -> str:
+    """Return 'ja' if the text contains Japanese characters, else 'en'."""
+    return "ja" if _JP_CHAR_RE.search(text or "") else "en"
+
 
 ONBOARDING_GAP_GUIDE = (
     "オンボーディング資料がまだ登録されていません。"
@@ -128,7 +140,7 @@ class BedrockAnswerProvider:
             and self.settings.region == "us-east-1"
         )
 
-    def _retrieve(self, query: str) -> tuple[float, list[dict]]:
+    def _retrieve_once(self, query: str) -> tuple[float, list[dict]]:
         response = self.agent_runtime.retrieve(
             knowledgeBaseId=self.settings.kb_id,
             retrievalQuery={"text": query},
@@ -141,6 +153,81 @@ class BedrockAnswerProvider:
         results = response.get("retrievalResults", [])
         score = max((item.get("score", 0.0) for item in results), default=0.0)
         return score, results
+
+    def _translate_query(self, query: str, target_lang: str) -> str:
+        """Translate a short query into the target language via the fast model.
+
+        Returns "" on any failure so retrieval can fall back to the original.
+        """
+        target = "Japanese" if target_lang == "ja" else "English"
+        try:
+            response = self.runtime.converse(
+                modelId=self.settings.onboarding_model_id,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "text": (
+                                    "Translate this lab equipment / facility "
+                                    f"question into {target}. Output ONLY the "
+                                    "translation with no quotes, labels, or "
+                                    f"notes:\n\n{query}"
+                                )
+                            }
+                        ],
+                    }
+                ],
+                inferenceConfig={"maxTokens": 120, "temperature": 0.0},
+            )
+            return _response_text(response).strip()
+        except Exception:
+            logger.warning("query_translation_failed", exc_info=True)
+            return ""
+
+    def _merge_results(
+        self, primary: list[dict], secondary: list[dict]
+    ) -> list[dict]:
+        """Merge two retrieval result lists, dedupe, sort by score, truncate."""
+        merged: list[dict] = []
+        seen: set[tuple] = set()
+        for item in [*primary, *secondary]:
+            uri = (
+                item.get("location", {})
+                .get("s3Location", {})
+                .get("uri", "")
+            )
+            page = item.get("metadata", {}).get(
+                "x-amz-bedrock-kb-document-page-number"
+            )
+            text = item.get("content", {}).get("text", "")
+            key = (uri, page, text[:80])
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(item)
+        merged.sort(key=lambda it: it.get("score", 0.0), reverse=True)
+        return merged[: self.settings.num_results]
+
+    def _retrieve(self, query: str) -> tuple[float, list[dict]]:
+        score, results = self._retrieve_once(query)
+        if not self.settings.query_translation:
+            return score, results
+
+        target_lang = "en" if _detect_language(query) == "ja" else "ja"
+        translated = self._translate_query(query, target_lang)
+        if not translated or translated.strip().lower() == query.strip().lower():
+            return score, results
+
+        try:
+            _, translated_results = self._retrieve_once(translated)
+        except Exception:
+            logger.warning("translated_retrieve_failed", exc_info=True)
+            return score, results
+
+        merged = self._merge_results(results, translated_results)
+        best = max((it.get("score", 0.0) for it in merged), default=score)
+        return best, merged
 
     def ask(self, message: str, history: list[HistoryTurn]) -> AnswerResult:
         score, results = self._retrieve(message)

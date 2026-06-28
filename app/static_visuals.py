@@ -63,7 +63,9 @@ class StaticImageRenderer(Protocol):
 
 
 # Generic words that appear in almost every lab question/diagram and therefore
-# carry no relevance signal. Kept short and domain-specific.
+# carry no relevance signal. Includes common UI/control vocabulary and panel
+# location terms that show up on nearly every diagram, so they don't create
+# spurious cross-page matches.
 _STOPWORDS = frozenset(
     {
         # English
@@ -73,10 +75,23 @@ _STOPWORDS = frozenset(
         "did", "can", "could", "should", "would", "i", "at", "by", "from", "as",
         "please", "check", "show", "tell", "me", "about", "page", "figure", "fig",
         "image", "photo", "diagram", "lab", "laboratory", "device", "equipment",
+        # English UI / control vocabulary (low discriminative value)
+        "switch", "button", "key", "knob", "dial", "lever", "lamp", "panel",
+        "press", "left", "right", "main", "sub", "set", "turn",
         # Japanese (common particles / generic terms)
         "です", "ます", "する", "して", "した", "から", "まで", "こと", "もの",
         "ため", "よう", "この", "その", "あの", "どの", "ください", "教えて",
         "研究室", "装置", "確認", "について", "ですか", "ますか",
+        # Japanese UI / control vocabulary and panel-location terms
+        "スイ", "イッ", "ッチ",  # スイッチ (switch)
+        "ボタ", "タン",          # ボタン (button)
+        "つま", "まみ",          # つまみ (knob)
+        "ダイ", "イヤ", "ヤル",  # ダイヤル (dial)
+        "レバ", "バー",          # レバー (lever)
+        "ラン", "ンプ",          # ランプ (lamp)
+        "パネ", "ネル",          # パネル (panel)
+        "メイ", "イン",          # メイン (main)
+        "左メ", "右メ",          # 左/右メイン
     }
 )
 
@@ -86,8 +101,10 @@ def _tokenize(text: str) -> set[str]:
 
     Handles bilingual (English + Japanese) content:
     - Latin words are lowercased and split on non-alphanumerics.
-    - CJK runs are broken into single characters and adjacent-character bigrams,
-      which approximates word matching without a Japanese tokenizer.
+    - CJK runs are broken into adjacent-character bigrams, which approximate
+      word matching without a Japanese tokenizer. Single CJK characters are
+      intentionally excluded: like single English letters they are far too
+      common (particles を/に/し/て...) and create spurious overlap.
     """
     if not text:
         return set()
@@ -98,15 +115,12 @@ def _tokenize(text: str) -> set[str]:
         if len(word) > 1 and word not in _STOPWORDS:
             tokens.add(word)
 
-    cjk_chars = re.findall(r"[\u3040-\u30ff\u4e00-\u9fff\uff66-\uff9f]", lowered)
-    cjk_run = "".join(cjk_chars)
-    for char in cjk_chars:
-        if char not in _STOPWORDS:
-            tokens.add(char)
-    for first, second in zip(cjk_run, cjk_run[1:]):
-        bigram = first + second
-        if bigram not in _STOPWORDS:
-            tokens.add(bigram)
+    # Split into CJK runs so bigrams never straddle non-CJK boundaries.
+    for run in re.findall(r"[\u3040-\u30ff\u4e00-\u9fff\uff66-\uff9f]+", lowered):
+        for first, second in zip(run, run[1:]):
+            bigram = first + second
+            if bigram not in _STOPWORDS:
+                tokens.add(bigram)
 
     return tokens
 

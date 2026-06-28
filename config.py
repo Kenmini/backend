@@ -115,6 +115,11 @@ class Settings:
     # to the question/answer. Images below this are hidden so unrelated diagrams
     # (e.g. a "computer resources" image for a phone-number question) don't show.
     visual_relevance_min: int
+    # When true, translate the query into the other supported language and
+    # retrieve with both, then merge. Bridges the gap between an English doc
+    # (onboarding) and a Japanese doc (equipment manual) so a question in
+    # either language can find content in either document.
+    query_translation: bool
 
     @classmethod
     def from_env(cls, *, load_dotenv_file: bool = True) -> "Settings":
@@ -228,7 +233,10 @@ class Settings:
                 "VISUAL_MAX_PDF_BYTES", _env("VISUAL_MAX_PDF_BYTES", "20971520")
             ),
             visual_relevance_min=_positive_int(
-                "VISUAL_RELEVANCE_MIN", _env("VISUAL_RELEVANCE_MIN", "1")
+                "VISUAL_RELEVANCE_MIN", _env("VISUAL_RELEVANCE_MIN", "2")
+            ),
+            query_translation=_boolean(
+                "QUERY_TRANSLATION", _env("QUERY_TRANSLATION", "true")
             ),
         )
 

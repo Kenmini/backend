@@ -110,6 +110,7 @@ def settings(**changes):
         "answer_path": "advanced",
         "ask_model_id": "test-sonnet",
         "onboarding_model_id": "test-haiku",
+        "query_translation": False,
     }
     values.update(changes)
     return replace(base, **values)
@@ -270,3 +271,112 @@ def test_fixture_provider_default_path_is_independent_of_working_directory(
     provider = providers.FixtureAnswerProvider()
 
     assert provider.ask("輝度つまみはどこですか？", []).is_gap is False
+
+
+def test_bilingual_retrieval_translates_and_merges_by_score():
+    providers = _providers()
+
+    class TranslatingRuntime:
+        def __init__(self):
+            self.calls = []
+
+        def converse(self, **kwargs):
+            self.calls.append(kwargs)
+            text = kwargs["messages"][0]["content"][0]["text"]
+            if text.startswith("Translate"):
+                return {
+                    "output": {
+                        "message": {"content": [{"text": "where is the lab"}]}
+                    }
+                }
+            return {
+                "output": {
+                    "message": {
+                        "content": [
+                            {
+                                "text": json.dumps(
+                                    {
+                                        "answer_text": "B204 にあります。",
+                                        "next_step_hint": None,
+                                        "is_supported": True,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        ]
+                    }
+                },
+                "ResponseMetadata": {"RequestId": "r"},
+            }
+
+    class BilingualAgent:
+        def __init__(self):
+            self.queries = []
+
+        def retrieve(self, **kwargs):
+            query = kwargs["retrievalQuery"]["text"]
+            self.queries.append(query)
+            if "lab" in query.lower():  # the translated English query
+                return {
+                    "retrievalResults": [
+                        {
+                            "score": 0.95,
+                            "content": {"text": "The lab is in Building B204."},
+                            "metadata": {
+                                "x-amz-bedrock-kb-document-page-number": 1.0
+                            },
+                            "location": {
+                                "type": "S3",
+                                "s3Location": {
+                                    "uri": "s3://bedrock-docs/onboarding.pdf"
+                                },
+                            },
+                        }
+                    ]
+                }
+            return {
+                "retrievalResults": [
+                    {
+                        "score": 0.30,
+                        "content": {"text": "無関係な日本語の内容。"},
+                        "metadata": {
+                            "x-amz-bedrock-kb-document-page-number": 9.0
+                        },
+                        "location": {
+                            "type": "S3",
+                            "s3Location": {"uri": "s3://bedrock-docs/manual.pdf"},
+                        },
+                    }
+                ]
+            }
+
+    agent = BilingualAgent()
+    runtime = TranslatingRuntime()
+    provider = providers.BedrockAnswerProvider(
+        settings(query_translation=True), agent, runtime
+    )
+
+    result = provider.ask("研究室はどこですか？", [])
+
+    # Both the original Japanese query and the translated English query ran.
+    assert len(agent.queries) == 2
+    assert "研究室はどこですか？" in agent.queries
+    assert any("lab" in q.lower() for q in agent.queries)
+    # Merged results are sorted by score: the English onboarding hit (0.95)
+    # outranks the unrelated Japanese manual hit (0.30).
+    assert result.confidence == 0.95
+    assert result.citations[0].source == "onboarding.pdf"
+
+
+def test_query_translation_disabled_runs_single_retrieval():
+    providers = _providers()
+    agent = FakeAgentRuntime()
+    runtime = FakeRuntime()
+    provider = providers.BedrockAnswerProvider(
+        settings(query_translation=False), agent, runtime
+    )
+
+    provider.ask("研究室はどこですか？", [])
+
+    # Only one retrieval and no translation call.
+    assert len(agent.retrieve_calls) == 1
