@@ -326,29 +326,17 @@ def create_app(
             and source_is_equipment
             and page_num is not None
         )
-        visual_data_response: VisualData | None = None
-        if has_meaningful_visual:
-            visual_data_response = VisualData(
-                figure_id=figure_id,
-                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
-                image_url=None,  # base64 page rendering disabled
-                source=source_name,
-                page_number=page_num,
-                caption=caption,
-                static_images=static_images_response,
-                pdf_url=pdf_url,
-            )
-        elif has_pdf_fallback:
-            visual_data_response = VisualData(
-                figure_id=figure_id,
-                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
-                image_url=None,
-                source=source_name,
-                page_number=page_num,
-                caption=caption,
-                static_images=[],
-                pdf_url=pdf_url,
-            )
+        # Always return visual_data_response to carry figure_id
+        visual_data_response = VisualData(
+            figure_id=figure_id,
+            highlight_item=figures.pick_highlight(figure_id, result.answer_text),
+            image_url=None,  # base64 page rendering disabled
+            source=source_name,
+            page_number=page_num,
+            caption=caption,
+            static_images=static_images_response if has_meaningful_visual else [],
+            pdf_url=pdf_url if (has_meaningful_visual or has_pdf_fallback) else None,
+        )
 
         return AskResponse(
             answer_text=result.answer_text,
