@@ -14,7 +14,11 @@ from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerPr
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
 from app.security import SlidingWindowRateLimiter
 from app.services import KnowledgeService
-from app.static_visuals import S3StaticImageRenderer, StaticImageRenderer
+from app.static_visuals import (
+    S3StaticImageRenderer,
+    StaticImageRenderer,
+    filter_relevant_images,
+)
 from app.visuals import PdfPageRenderer, S3PdfPageRenderer
 from config import Settings
 
@@ -267,6 +271,7 @@ def create_app(
 
         # Static image lookup (replaces base64 page rendering)
         static_images_response: list[StaticImageResponse] = []
+        had_static_images = False
         source_name: str | None = None
         page_num: int | None = None
         caption: str | None = None
@@ -276,6 +281,27 @@ def create_app(
             try:
                 static_result = static_image_renderer.render(result.visual_reference)
                 if static_result:
+                    had_static_images = len(static_result.images) > 0
+                    # Keep only images relevant to this specific question/answer.
+                    # The retrieved chunk text (caption) is in the document's
+                    # language and matches the image metadata language, so it
+                    # gives reliable relevance even when the question/answer are
+                    # in a different language (JA manual vs EN question).
+                    relevance_query = " ".join(
+                        filter(
+                            None,
+                            [
+                                result.visual_reference.caption,
+                                request.message,
+                                result.answer_text,
+                            ],
+                        )
+                    )
+                    relevant_images = filter_relevant_images(
+                        relevance_query,
+                        static_result.images,
+                        settings.visual_relevance_min,
+                    )
                     static_images_response = [
                         StaticImageResponse(
                             image_url=img.image_url,
@@ -285,7 +311,7 @@ def create_app(
                             page_number=img.page_number,
                             highlights=img.highlights,
                         )
-                        for img in static_result.images
+                        for img in relevant_images
                     ]
                     source_name = static_result.source
                     page_num = static_result.page_number
@@ -300,55 +326,43 @@ def create_app(
                     },
                 )
 
+
         # If no static result at all, still populate metadata from the reference
         if source_name is None and result.visual_reference is not None:
             source_name = result.visual_reference.source
             page_num = result.visual_reference.page_number
             caption = result.visual_reference.caption
 
-        # Only include visual_data when there are actual static images to show
-        # AND the source is the equipment manual PDF (not onboarding or other docs).
-        # Showing a random PDF page for "what's the lab phone number" is noise.
-        equipment_pdf_stem = (
-            settings.pdf_s3_key.rsplit(".", 1)[0].lower() if settings.pdf_s3_key else ""
+        # Decide whether to surface a page-level visual (static images or a PDF
+        # fallback). figure_id/highlight_item metadata is always passed through;
+        # it never renders a page image on its own.
+        #  - relevant static images        → show them
+        #  - page had images, none relevant → suppress source/page so no image
+        #    or PDF fallback shows (e.g. a "computer resources" image for a
+        #    phone-number question)
+        #  - page had no curated images     → keep source/page for PDF fallback
+        #    (useful for equipment manual text pages)
+        if static_images_response:
+            pass  # keep source/page/static for the image card
+        elif not had_static_images:
+            pass  # keep source/page for PDF fallback
+        else:
+            # Images existed but none matched this question — show nothing.
+            source_name = None
+            page_num = None
+            caption = None
+            pdf_url = None
+
+        visual_data_response = VisualData(
+            figure_id=figure_id,
+            highlight_item=figures.pick_highlight(figure_id, result.answer_text),
+            image_url=None,  # base64 page rendering disabled
+            source=source_name,
+            page_number=page_num,
+            caption=caption,
+            static_images=static_images_response,
+            pdf_url=pdf_url,
         )
-        source_is_equipment = (
-            equipment_pdf_stem
-            and source_name is not None
-            and equipment_pdf_stem in source_name.lower()
-        )
-        has_meaningful_visual = (
-            len(static_images_response) > 0 and source_is_equipment
-        )
-        # Also allow PDF fallback for equipment manual pages even without static images
-        has_pdf_fallback = (
-            len(static_images_response) == 0
-            and source_is_equipment
-            and page_num is not None
-        )
-        visual_data_response: VisualData | None = None
-        if has_meaningful_visual:
-            visual_data_response = VisualData(
-                figure_id=figure_id,
-                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
-                image_url=None,  # base64 page rendering disabled
-                source=source_name,
-                page_number=page_num,
-                caption=caption,
-                static_images=static_images_response,
-                pdf_url=pdf_url,
-            )
-        elif has_pdf_fallback:
-            visual_data_response = VisualData(
-                figure_id=figure_id,
-                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
-                image_url=None,
-                source=source_name,
-                page_number=page_num,
-                caption=caption,
-                static_images=[],
-                pdf_url=pdf_url,
-            )
 
         return AskResponse(
             answer_text=result.answer_text,

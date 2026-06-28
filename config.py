@@ -111,6 +111,10 @@ class Settings:
     # visuals機能設定
     visuals_enabled: bool
     visual_max_pdf_bytes: int
+    # Minimum keyword-overlap score for a static image to be considered relevant
+    # to the question/answer. Images below this are hidden so unrelated diagrams
+    # (e.g. a "computer resources" image for a phone-number question) don't show.
+    visual_relevance_min: int
 
     @classmethod
     def from_env(cls, *, load_dotenv_file: bool = True) -> "Settings":
@@ -222,6 +226,9 @@ class Settings:
             ),
             visual_max_pdf_bytes=_positive_int(
                 "VISUAL_MAX_PDF_BYTES", _env("VISUAL_MAX_PDF_BYTES", "20971520")
+            ),
+            visual_relevance_min=_positive_int(
+                "VISUAL_RELEVANCE_MIN", _env("VISUAL_RELEVANCE_MIN", "1")
             ),
         )
 

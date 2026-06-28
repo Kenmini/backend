@@ -20,6 +20,7 @@ Design:
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
@@ -59,6 +60,88 @@ class StaticVisualResult:
 
 class StaticImageRenderer(Protocol):
     def render(self, reference: VisualReference) -> StaticVisualResult | None: ...
+
+
+# Generic words that appear in almost every lab question/diagram and therefore
+# carry no relevance signal. Kept short and domain-specific.
+_STOPWORDS = frozenset(
+    {
+        # English
+        "the", "a", "an", "is", "are", "was", "were", "be", "of", "to", "in",
+        "on", "for", "and", "or", "our", "my", "your", "you", "we", "it", "this",
+        "that", "with", "how", "what", "where", "when", "why", "who", "do", "does",
+        "did", "can", "could", "should", "would", "i", "at", "by", "from", "as",
+        "please", "check", "show", "tell", "me", "about", "page", "figure", "fig",
+        "image", "photo", "diagram", "lab", "laboratory", "device", "equipment",
+        # Japanese (common particles / generic terms)
+        "です", "ます", "する", "して", "した", "から", "まで", "こと", "もの",
+        "ため", "よう", "この", "その", "あの", "どの", "ください", "教えて",
+        "研究室", "装置", "確認", "について", "ですか", "ますか",
+    }
+)
+
+
+def _tokenize(text: str) -> set[str]:
+    """Tokenize text into a set of comparable tokens.
+
+    Handles bilingual (English + Japanese) content:
+    - Latin words are lowercased and split on non-alphanumerics.
+    - CJK runs are broken into single characters and adjacent-character bigrams,
+      which approximates word matching without a Japanese tokenizer.
+    """
+    if not text:
+        return set()
+    lowered = text.lower()
+    tokens: set[str] = set()
+
+    for word in re.findall(r"[a-z0-9]+", lowered):
+        if len(word) > 1 and word not in _STOPWORDS:
+            tokens.add(word)
+
+    cjk_chars = re.findall(r"[\u3040-\u30ff\u4e00-\u9fff\uff66-\uff9f]", lowered)
+    cjk_run = "".join(cjk_chars)
+    for char in cjk_chars:
+        if char not in _STOPWORDS:
+            tokens.add(char)
+    for first, second in zip(cjk_run, cjk_run[1:]):
+        bigram = first + second
+        if bigram not in _STOPWORDS:
+            tokens.add(bigram)
+
+    return tokens
+
+
+def image_relevance_score(query_text: str, image: StaticImage) -> int:
+    """Keyword-overlap score between a query and a static image's metadata.
+
+    Higher means more relevant. The query should combine the user's question
+    and the generated answer for the best signal.
+    """
+    query_tokens = _tokenize(query_text)
+    if not query_tokens:
+        return 0
+
+    parts = [image.name or "", image.description or ""]
+    for highlight in (image.highlights or {}).values():
+        if isinstance(highlight, dict):
+            parts.append(str(highlight.get("item", "")))
+            parts.append(str(highlight.get("explanation", "")))
+            parts.append(str(highlight.get("annotation", "")))
+    doc_tokens = _tokenize(" ".join(parts))
+
+    return len(query_tokens & doc_tokens)
+
+
+def filter_relevant_images(
+    query_text: str, images: list[StaticImage], min_score: int
+) -> list[StaticImage]:
+    """Keep only images whose relevance score meets the minimum threshold."""
+    scored = [
+        (image_relevance_score(query_text, image), image) for image in images
+    ]
+    relevant = [image for score, image in scored if score >= min_score]
+    # If nothing clears the bar, return empty (caller decides on fallback).
+    return relevant
 
 
 class S3StaticImageRenderer:
