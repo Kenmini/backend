@@ -141,7 +141,7 @@ class BedrockAnswerProvider:
         score, results = self._retrieve(message)
         if score < self.settings.gap_threshold:
             return AnswerResult(
-                answer_text=prompts.GAP_MESSAGE,
+                answer_text=prompts.get_gap_message(message),
                 confidence=0.0,
                 is_gap=True,
             )
@@ -230,7 +230,10 @@ class BedrockAnswerProvider:
                             "参考資料のみに基づいて回答してください。"
                             "参考資料が質問へ直接回答している場合のみ、"
                             "is_supportedをtrueにしてください。"
-                            "単に関連するだけの場合はfalseにしてください。"
+                            "単に関連するだけの場合はfalseにしてください。\n\n"
+                            "IMPORTANT: Your answer_text MUST be written in the same "
+                            "language as the 質問 above. If the question is in English, "
+                            "answer in English. If in Japanese, answer in Japanese."
                         )
                     }
                 ],
@@ -270,7 +273,7 @@ class BedrockAnswerProvider:
             raise ValueError("Bedrock returned an invalid support decision")
         if not is_supported:
             return AnswerResult(
-                answer_text=prompts.GAP_MESSAGE,
+                answer_text=prompts.get_gap_message(message),
                 confidence=0.0,
                 is_gap=True,
             )
