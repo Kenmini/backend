@@ -208,10 +208,11 @@ class BedrockAnswerProvider:
                     {
                         "text": (
                             f"参考資料:\n{context}\n\n質問: {message}\n\n"
-                            "参考資料のみに基づいて回答してください。"
+                            "参考資料のみに基づいて回答してください。\n"
                             "参考資料が質問へ直接回答している場合のみ、"
                             "is_supportedをtrueにしてください。"
-                            "単に関連するだけの場合はfalseにしてください。\n\n"
+                            "ただし、ユーザーが「画像を見せて」「全体図を見せて」などの画像表示を求めた場合で、"
+                            "適切なfigure_idを選択できた時は、テキストの参考資料がなくてもis_supportedをtrueにしてください。\n\n"
                             "IMPORTANT: Your answer_text MUST be written in the same "
                             "language as the 質問 above. If the question is in English, "
                             "answer in English. If in Japanese, answer in Japanese."
