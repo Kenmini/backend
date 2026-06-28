@@ -293,7 +293,8 @@ def create_app(
             page_num = vref.page_number
             caption = vref.caption
             # Pages with a curated full-page manual figure rendered under figures/
-            if vref.page_number in MANUAL_FIGURE_PAGES:
+            is_manual = "hf2000" in vref.source.lower() or vref.source.lower().endswith(".docx")
+            if is_manual and vref.page_number in MANUAL_FIGURE_PAGES:
                 from urllib.parse import unquote, urlsplit
 
                 parsed = urlsplit(vref.source_uri)
