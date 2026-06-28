@@ -324,3 +324,93 @@ def test_public_demo_rate_limits_model_routes_per_client():
     assert limited.status_code == 429
     assert limited.headers["Retry-After"]
     assert len(provider.ask_calls) == 2
+
+
+class _GateProvider(FakeProvider):
+    """Provider that returns one visual and a configurable relevance verdict."""
+
+    def __init__(self, *, picked):
+        super().__init__(visual=True)
+        self._picked = picked
+        self.select_calls = []
+
+    def ask(self, message, history):
+        result = super().ask(message, history)
+        # Use a page that is NOT a curated full-page figure, so the static
+        # image render() path (not the figures/ path) is exercised.
+        return replace(
+            result,
+            visual_reference=replace(result.visual_reference, page_number=4),
+        )
+
+    def select_relevant_visuals(self, question, answer, images):
+        self.select_calls.append((question, answer, images))
+        return self._picked
+
+
+def _static_renderer_with_one_image():
+    from app.static_visuals import StaticImage, StaticVisualResult
+
+    class FakeStaticRenderer:
+        def render(self, reference):
+            return StaticVisualResult(
+                images=[
+                    StaticImage(
+                        image_url="https://s3/img.png",
+                        filename="img.png",
+                        name="Computer Resources",
+                        description="Lab computer resources and network setup.",
+                        page_number=3,
+                        highlights={},
+                    )
+                ],
+                source=reference.source,
+                page_number=reference.page_number,
+                caption=reference.caption,
+                pdf_url=None,
+            )
+
+    return FakeStaticRenderer()
+
+
+def _client_with_static(provider):
+    api = _api()
+    settings = replace(
+        Settings.from_env(load_dotenv_file=False),
+        app_mode="demo",
+        storage_mode="memory",
+    )
+    return TestClient(
+        api.create_app(
+            settings=settings,
+            provider=provider,
+            repository=MemoryRepository(history_limit=10),
+            static_image_renderer=_static_renderer_with_one_image(),
+        )
+    )
+
+
+def test_relevance_gate_drops_unrelated_image():
+    provider = _GateProvider(picked=[])  # model says: not relevant
+    response = _client_with_static(provider).post(
+        "/ask", json={"message": "lab location"}
+    )
+
+    assert response.status_code == 200
+    visual = response.json()["visual_data"]
+    # Image existed for the page but the gate rejected it → nothing shown.
+    assert visual["static_images"] == []
+    assert visual["source"] is None
+    assert provider.select_calls  # the gate was consulted
+
+
+def test_relevance_gate_keeps_related_image():
+    provider = _GateProvider(picked=[0])  # model says: relevant
+    response = _client_with_static(provider).post(
+        "/ask", json={"message": "where is the sample holder"}
+    )
+
+    assert response.status_code == 200
+    visual = response.json()["visual_data"]
+    assert len(visual["static_images"]) == 1
+    assert visual["static_images"][0]["name"] == "Computer Resources"

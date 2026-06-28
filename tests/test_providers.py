@@ -64,9 +64,7 @@ class FakeRuntime:
 
     def converse(self, **kwargs):
         self.calls.append(kwargs)
-        if kwargs["modelId"].endswith("haiku"):
-            text = "M1向けオンボーディングガイド"
-        else:
+        if "outputConfig" in kwargs:
             text = json.dumps(
                 {
                     "answer_text": "パネル右上の輝度つまみです。",
@@ -75,6 +73,8 @@ class FakeRuntime:
                 },
                 ensure_ascii=False,
             )
+        else:
+            text = "M1向けオンボーディングガイド"
         return {
             "output": {"message": {"content": [{"text": text}]}},
             "ResponseMetadata": {"RequestId": "request-1"},
@@ -196,7 +196,7 @@ def test_non_pdf_retrieval_does_not_create_visual_reference():
     assert result.visual_reference is None
 
 
-def test_onboarding_uses_haiku_without_history_or_output_schema():
+def test_onboarding_uses_smart_model_without_history_or_output_schema():
     providers = _providers()
     runtime = FakeRuntime()
     provider = providers.BedrockAnswerProvider(settings(), FakeAgentRuntime(), runtime)
@@ -205,7 +205,7 @@ def test_onboarding_uses_haiku_without_history_or_output_schema():
 
     assert guide == "M1向けオンボーディングガイド"
     call = runtime.calls[0]
-    assert call["modelId"] == "test-haiku"
+    assert call["modelId"] == "test-sonnet"
     assert "outputConfig" not in call
     assert len(call["messages"]) == 1
 
