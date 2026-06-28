@@ -206,7 +206,7 @@ class Settings:
                 "AWS_MAX_ATTEMPTS", _env("AWS_MAX_ATTEMPTS", "3")
             ),
             ask_max_tokens=_positive_int(
-                "ASK_MAX_TOKENS", _env("ASK_MAX_TOKENS", "1024")
+                "ASK_MAX_TOKENS", _env("ASK_MAX_TOKENS", "8192")
             ),
             onboarding_max_tokens=_positive_int(
                 "ONBOARDING_MAX_TOKENS", _env("ONBOARDING_MAX_TOKENS", "1400")
