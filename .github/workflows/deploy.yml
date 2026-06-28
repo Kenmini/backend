@@ -16,15 +16,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          # バックエンドのパスや再起動コマンドは環境に合わせて書き換えてください
           script: |
-            cd /path/to/backend
+            cd /home/ec2-user/backend
             git pull origin main
             
-            # 依存関係のインストール等が必要な場合はコメントアウトを外してください
-            # source .venv/bin/activate
-            # pip install -r requirements.txt
+            source .venv/bin/activate
+            pip install -r requirements.txt
             
-            # 再起動コマンド
-            # 例: sudo systemctl restart backend
-            # 例: pm2 restart backend
+            sudo systemctl restart ump-backend.service
