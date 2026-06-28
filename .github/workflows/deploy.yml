@@ -1,0 +1,30 @@
+name: Deploy Backend to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy using ssh
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          # バックエンドのパスや再起動コマンドは環境に合わせて書き換えてください
+          script: |
+            cd /path/to/backend
+            git pull origin main
+            
+            # 依存関係のインストール等が必要な場合はコメントアウトを外してください
+            # source .venv/bin/activate
+            # pip install -r requirements.txt
+            
+            # 再起動コマンド
+            # 例: sudo systemctl restart backend
+            # 例: pm2 restart backend
