@@ -278,7 +278,8 @@ def create_app(
         pdf_url: str | None = None
 
         if static_image_renderer is not None and result.visual_reference is not None:
-            if result.visual_reference.page_number in [2, 3, 6, 8, 13, 17, 19]:
+            is_manual = "hf2000" in result.visual_reference.source.lower() or result.visual_reference.source.lower().endswith(".docx")
+            if is_manual and result.visual_reference.page_number in [2, 3, 6, 8, 13, 17, 19]:
                 from urllib.parse import unquote, urlsplit
                 parsed = urlsplit(result.visual_reference.source_uri)
                 key = unquote(parsed.path.lstrip("/"))
