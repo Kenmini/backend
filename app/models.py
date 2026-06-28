@@ -8,12 +8,22 @@ class Citation:
 
 
 @dataclass(frozen=True)
+class VisualReference:
+    source_uri: str
+    source: str
+    page_number: int
+    caption: str
+    score: float
+
+
+@dataclass(frozen=True)
 class AnswerResult:
     answer_text: str
     next_step_hint: str | None = None
     citations: list[Citation] = field(default_factory=list)
     confidence: float = 0.0
     is_gap: bool = False
+    visual_reference: VisualReference | None = None
 
 
 @dataclass(frozen=True)

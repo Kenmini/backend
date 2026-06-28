@@ -104,6 +104,8 @@ class Settings:
     public_demo: bool
     demo_api_token: str | None
     model_rate_limit_per_minute: int
+    visuals_enabled: bool
+    visual_max_pdf_bytes: int
 
     @classmethod
     def from_env(cls, *, load_dotenv_file: bool = True) -> "Settings":
@@ -204,6 +206,13 @@ class Settings:
             model_rate_limit_per_minute=_positive_int(
                 "MODEL_RATE_LIMIT_PER_MINUTE",
                 _env("MODEL_RATE_LIMIT_PER_MINUTE", "30"),
+            ),
+            visuals_enabled=_boolean(
+                "VISUALS_ENABLED", _env("VISUALS_ENABLED", "true")
+            ),
+            visual_max_pdf_bytes=_positive_int(
+                "VISUAL_MAX_PDF_BYTES",
+                _env("VISUAL_MAX_PDF_BYTES", str(20 * 1024 * 1024)),
             ),
         )
 

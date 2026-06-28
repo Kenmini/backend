@@ -18,6 +18,8 @@ ENV_NAMES = (
     "PUBLIC_DEMO",
     "DEMO_API_TOKEN",
     "MODEL_RATE_LIMIT_PER_MINUTE",
+    "VISUALS_ENABLED",
+    "VISUAL_MAX_PDF_BYTES",
     "CORS_ORIGINS",
     "MODEL_SMART",
     "MODEL_FAST",
@@ -47,6 +49,8 @@ def test_settings_have_safe_hackathon_defaults():
     assert settings.public_demo is False
     assert settings.demo_api_token is None
     assert settings.model_rate_limit_per_minute == 30
+    assert settings.visuals_enabled is True
+    assert settings.visual_max_pdf_bytes == 20 * 1024 * 1024
 
 
 @pytest.mark.parametrize(
@@ -57,6 +61,7 @@ def test_settings_have_safe_hackathon_defaults():
         ("STORAGE_MODE", "redis"),
         ("GAP_THRESHOLD", "1.5"),
         ("HISTORY_LIMIT", "0"),
+        ("VISUAL_MAX_PDF_BYTES", "0"),
     ],
 )
 def test_settings_reject_invalid_values(monkeypatch, name, value):

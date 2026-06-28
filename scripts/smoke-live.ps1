@@ -41,7 +41,7 @@ try {
     Assert-True ($readiness.status -eq "ready") "Readiness check failed"
 
     $knownBody = ConvertTo-Utf8JsonBytes @{
-        message = "Amazon Bedrock Guardrailsの主な用途は何ですか？"
+        message = "HF-2000の液体窒素は最初の補充後どのくらいの間隔で補充しますか？"
         session_id = "live-smoke"
     }
     $known = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $knownBody -TimeoutSec 90
@@ -49,7 +49,7 @@ try {
     Assert-True ($known.citations.Count -gt 0) "Known live query returned no citations"
 
     $gapBody = ConvertTo-Utf8JsonBytes @{
-        message = "研究室の安全ルール"
+        message = "研究室のWi-Fiパスワードは何ですか？"
         session_id = "live-smoke"
     }
     $gap = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $gapBody -TimeoutSec 90

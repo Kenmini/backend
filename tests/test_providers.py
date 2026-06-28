@@ -27,6 +27,9 @@ class FakeAgentRuntime:
                 {
                     "score": self.score,
                     "content": {"text": "輝度つまみは右上です。"},
+                    "metadata": {
+                        "x-amz-bedrock-kb-document-page-number": 3.0,
+                    },
                     "location": {
                         "type": "S3",
                         "s3Location": {"uri": "s3://bedrock-docs/manual.pdf"},
@@ -126,6 +129,12 @@ def test_advanced_ask_uses_sonnet_structured_output_and_history():
     assert result.next_step_hint == "フォーカスを確認してください。"
     assert result.confidence == 0.9
     assert result.citations[0].source == "manual.pdf"
+    assert result.visual_reference is not None
+    assert result.visual_reference.source_uri == "s3://bedrock-docs/manual.pdf"
+    assert result.visual_reference.source == "manual.pdf"
+    assert result.visual_reference.page_number == 3
+    assert result.visual_reference.caption == "輝度つまみは右上です。"
+    assert result.visual_reference.score == 0.9
     call = runtime.calls[0]
     assert call["modelId"] == "test-sonnet"
     assert "outputConfig" in call
@@ -144,6 +153,7 @@ def test_gap_skips_converse():
 
     assert result.is_gap is True
     assert result.citations == []
+    assert result.visual_reference is None
     assert runtime.calls == []
 
 
@@ -159,6 +169,30 @@ def test_high_score_but_unsupported_context_becomes_gap():
     assert result.next_step_hint is None
     assert result.citations == []
     assert result.confidence == 0.0
+    assert result.visual_reference is None
+
+
+def test_non_pdf_retrieval_does_not_create_visual_reference():
+    providers = _providers()
+    agent = FakeAgentRuntime()
+    agent.retrieve = lambda **kwargs: {
+        "retrievalResults": [
+            {
+                "score": 0.9,
+                "content": {"text": "議事録"},
+                "metadata": {"x-amz-bedrock-kb-document-page-number": 1.0},
+                "location": {
+                    "type": "S3",
+                    "s3Location": {"uri": "s3://bedrock-docs/minutes.docx"},
+                },
+            }
+        ]
+    }
+    provider = providers.BedrockAnswerProvider(settings(), agent, FakeRuntime())
+
+    result = provider.ask("question", [])
+
+    assert result.visual_reference is None
 
 
 def test_onboarding_uses_haiku_without_history_or_output_schema():

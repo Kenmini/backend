@@ -372,3 +372,11 @@ hunting for inline TODOs.
   Japanese questions against English and Japanese source documents.
 - Recorded the verified liquid-nitrogen result and the current limitations:
   no translation notice and possible source-language labels or next-step hints.
+
+### 2026-06-28 — Removed unrelated AWS manuals
+- Permanently deleted `page1-2472.pdf` and `page2473-4751.pdf` from the S3 data
+  source and synchronized Knowledge Base `AJVVEPYMSH`.
+- Verified the indexed inventory now contains only the HF-2000 manual and the
+  Japanese meeting minutes.
+- Replaced the deleted Guardrails live-smoke case with a grounded HF-2000
+  liquid-nitrogen question and a deterministic Wi-Fi knowledge-gap question.
