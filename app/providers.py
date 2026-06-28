@@ -229,7 +229,16 @@ class BedrockAnswerProvider:
 
     def _retrieve(self, query: str) -> tuple[float, list[dict]]:
         score, results = self._retrieve_once(query)
-        if not self.settings.query_translation:
+        # Only fall back to cross-language retrieval when the direct retrieval
+        # is too weak to answer (it would otherwise be a knowledge gap). The KB
+        # embeddings already handle most cross-language cases directly, so
+        # translating an already-strong query only adds noise and makes the
+        # result non-deterministic (occasionally flipping a good answer into a
+        # gap). Translation is therefore a rescue path, not the default.
+        if (
+            not self.settings.query_translation
+            or score >= self.settings.gap_threshold
+        ):
             return score, results
 
         target_lang = "en" if _detect_language(query) == "ja" else "ja"
