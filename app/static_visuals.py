@@ -158,6 +158,23 @@ def filter_relevant_images(
     return relevant
 
 
+def keyword_relevant_indices(
+    query_text: str, descriptions: list[str], min_score: int
+) -> list[int]:
+    """Return indices of descriptions whose keyword overlap meets the threshold.
+
+    Used as a fallback when the model-based relevance gate is unavailable.
+    """
+    query_tokens = _tokenize(query_text)
+    if not query_tokens:
+        return []
+    kept: list[int] = []
+    for index, description in enumerate(descriptions):
+        if len(query_tokens & _tokenize(description or "")) >= min_score:
+            kept.append(index)
+    return kept
+
+
 class S3StaticImageRenderer:
     """Serves pre-uploaded static images from S3 via presigned URLs.
 

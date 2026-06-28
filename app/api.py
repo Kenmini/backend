@@ -17,12 +17,17 @@ from app.services import KnowledgeService
 from app.static_visuals import (
     S3StaticImageRenderer,
     StaticImageRenderer,
-    filter_relevant_images,
+    keyword_relevant_indices as _keyword_relevant_indices,
 )
 from app.visuals import PdfPageRenderer, S3PdfPageRenderer
 from config import Settings
 
 logger = logging.getLogger(__name__)
+
+# Equipment-manual pages that have a curated, rendered full-page figure stored
+# under the S3 "figures/" prefix. Used as image candidates (still subject to the
+# relevance gate before being shown).
+MANUAL_FIGURE_PAGES = frozenset({2, 3, 6, 8, 13, 17, 19})
 
 
 class CurrentState(BaseModel):
@@ -277,58 +282,57 @@ def create_app(
         caption: str | None = None
         pdf_url: str | None = None
 
+        # Build candidate images for the page the top retrieval result landed on.
+        # Each candidate carries a (name, description) used by the relevance gate.
+        candidate_images: list[StaticImageResponse] = []
+        candidate_descriptions: list[str] = []
+
         if static_image_renderer is not None and result.visual_reference is not None:
-            if result.visual_reference.page_number in [2, 3, 6, 8, 13, 17, 19]:
+            vref = result.visual_reference
+            source_name = vref.source
+            page_num = vref.page_number
+            caption = vref.caption
+            # Pages with a curated full-page manual figure rendered under figures/
+            if vref.page_number in MANUAL_FIGURE_PAGES:
                 from urllib.parse import unquote, urlsplit
-                parsed = urlsplit(result.visual_reference.source_uri)
+
+                parsed = urlsplit(vref.source_uri)
                 key = unquote(parsed.path.lstrip("/"))
-                
-                # Format: figures/hf2000_manual_tem_edx_nbd_dstem.pdf_page_0002.png
-                s3_image_key = f"figures/{key.replace('/', '_')}_page_{result.visual_reference.page_number:04d}.png"
-                
+                s3_image_key = (
+                    f"figures/{key.replace('/', '_')}"
+                    f"_page_{vref.page_number:04d}.png"
+                )
                 try:
                     url = static_image_renderer.s3.generate_presigned_url(
                         "get_object",
-                        Params={"Bucket": static_image_renderer.bucket, "Key": s3_image_key},
+                        Params={
+                            "Bucket": static_image_renderer.bucket,
+                            "Key": s3_image_key,
+                        },
                         ExpiresIn=3600,
                     )
-                    static_images_response = [
+                    candidate_images = [
                         StaticImageResponse(
                             image_url=url,
                             filename=s3_image_key.split("/")[-1],
                             name="マニュアルの図",
                             description="Reference Page",
-                            page_number=result.visual_reference.page_number,
+                            page_number=vref.page_number,
                             highlights={},
                         )
                     ]
+                    # No real metadata for a full-page figure, so describe it by
+                    # the retrieved chunk text — that's what the page is about.
+                    candidate_descriptions = [vref.caption or ""]
                     had_static_images = True
-                    source_name = result.visual_reference.source
-                    page_num = result.visual_reference.page_number
-                    caption = result.visual_reference.caption
-                    pdf_url = None
                 except Exception:
                     logger.exception("figures_static_image_lookup_failed")
             else:
                 try:
-                    static_result = static_image_renderer.render(result.visual_reference)
+                    static_result = static_image_renderer.render(vref)
                     if static_result:
                         had_static_images = len(static_result.images) > 0
-                        # Judge relevance against the question + answer only.
-                        # The answer is what we actually show the user, and in
-                        # advanced mode it embeds Japanese manual quotes even for
-                        # English questions, which bridges the language gap. We
-                        # deliberately exclude the raw retrieved chunk (caption):
-                        # it is the page's own text and would always match that
-                        # page's images, surfacing unrelated diagrams when the
-                        # top-ranked chunk isn't actually about the question.
-                        relevance_query = f"{request.message} {result.answer_text}"
-                        relevant_images = filter_relevant_images(
-                            relevance_query,
-                            static_result.images,
-                            settings.visual_relevance_min,
-                        )
-                        static_images_response = [
+                        candidate_images = [
                             StaticImageResponse(
                                 image_url=img.image_url,
                                 filename=img.filename,
@@ -337,7 +341,11 @@ def create_app(
                                 page_number=img.page_number,
                                 highlights=img.highlights,
                             )
-                            for img in relevant_images
+                            for img in static_result.images
+                        ]
+                        candidate_descriptions = [
+                            f"{img.name} — {img.description}"
+                            for img in static_result.images
                         ]
                         source_name = static_result.source
                         page_num = static_result.page_number
@@ -347,10 +355,46 @@ def create_app(
                     logger.exception(
                         "static_image_lookup_failed",
                         extra={
-                            "source": result.visual_reference.source,
-                            "page_number": result.visual_reference.page_number,
+                            "source": vref.source,
+                            "page_number": vref.page_number,
                         },
                     )
+
+        # Relevance gate: ask the smart model which candidate images (if any)
+        # genuinely illustrate THIS answer. This is the single authoritative
+        # check — it rejects an equipment-manual figure on a lab-location
+        # answer, a "computer resources" image on a phone-number answer, etc.
+        # Falls back to keyword scoring only if the model can't decide or the
+        # provider doesn't support the gate (demo/tests).
+        if candidate_images:
+            selected = None
+            selector = getattr(provider, "select_relevant_visuals", None)
+            if selector is not None:
+                try:
+                    picked = selector(
+                        request.message,
+                        result.answer_text,
+                        list(zip(
+                            (img.name for img in candidate_images),
+                            candidate_descriptions,
+                        )),
+                    )
+                except Exception:
+                    logger.exception("visual_relevance_gate_failed")
+                    picked = None
+                if picked is not None:
+                    selected = [candidate_images[i] for i in picked]
+            if selected is None:
+                query = f"{request.message} {result.answer_text}"
+                keep = set(
+                    _keyword_relevant_indices(
+                        query, candidate_descriptions, settings.visual_relevance_min
+                    )
+                )
+                selected = [
+                    img for i, img in enumerate(candidate_images) if i in keep
+                ]
+            static_images_response = selected
 
         # If no static result at all, still populate metadata from the reference
         if source_name is None and result.visual_reference is not None:

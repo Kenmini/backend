@@ -162,7 +162,7 @@ class BedrockAnswerProvider:
         target = "Japanese" if target_lang == "ja" else "English"
         try:
             response = self.runtime.converse(
-                modelId=self.settings.onboarding_model_id,
+                modelId=self.settings.ask_model_id,
                 messages=[
                     {
                         "role": "user",
@@ -228,6 +228,66 @@ class BedrockAnswerProvider:
         merged = self._merge_results(results, translated_results)
         best = max((it.get("score", 0.0) for it in merged), default=score)
         return best, merged
+
+    def select_relevant_visuals(
+        self, question: str, answer: str, images: list[tuple[str, str]]
+    ) -> list[int] | None:
+        """Decide which candidate diagrams genuinely illustrate the answer.
+
+        Uses the smart model (Sonnet) as a relevance judge. This is far more
+        robust than keyword overlap: it understands, for example, that a
+        "Computer Resources" diagram does not belong with a lab-address answer
+        even when both mention "network" or "account", and that a sample-holder
+        diagram from the equipment manual does not belong with a facility
+        location answer.
+
+        Returns a list of indices into ``images`` to keep, or ``None`` if the
+        model could not decide (so the caller can fall back to keyword scoring).
+        """
+        if not images:
+            return []
+        catalog = "\n".join(
+            f"[{index}] {name}: {description}"
+            for index, (name, description) in enumerate(images)
+        )
+        prompt = (
+            "A user asked a question and received an answer. Below are candidate "
+            "diagrams/images. Decide which ones (if any) genuinely illustrate "
+            "THIS answer. Only choose a diagram if it visually supports the "
+            "specific content of the answer; ignore diagrams that merely share a "
+            "keyword. If none are relevant, return an empty list. The question "
+            "and answer may be in English or Japanese.\n\n"
+            f"Question: {question}\n\n"
+            f"Answer: {answer}\n\n"
+            f"Candidate diagrams:\n{catalog}\n\n"
+            "Respond with ONLY a JSON array of the relevant diagram numbers, "
+            "for example [0] or [1,2] or []."
+        )
+        try:
+            response = self.runtime.converse(
+                modelId=self.settings.ask_model_id,
+                messages=[{"role": "user", "content": [{"text": prompt}]}],
+                inferenceConfig={"maxTokens": 50, "temperature": 0.0},
+            )
+            text = _response_text(response).strip()
+        except Exception:
+            logger.warning("visual_relevance_selection_failed", exc_info=True)
+            return None
+
+        match = re.search(r"\[.*?\]", text, re.DOTALL)
+        if not match:
+            return None
+        try:
+            picked = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(picked, list):
+            return None
+        return [
+            index
+            for index in picked
+            if isinstance(index, int) and 0 <= index < len(images)
+        ]
 
     def ask(self, message: str, history: list[HistoryTurn]) -> AnswerResult:
         score, results = self._retrieve(message)
@@ -367,7 +427,7 @@ class BedrockAnswerProvider:
         )
         prompt = prompts.ONBOARDING_TEMPLATE.format(role=role, field_line=field_line)
         response = self.runtime.converse(
-            modelId=self.settings.onboarding_model_id,
+            modelId=self.settings.ask_model_id,
             system=[{"text": prompts.SYSTEM_PROMPT}],
             messages=[
                 {
