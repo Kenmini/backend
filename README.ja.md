@@ -272,7 +272,11 @@ gitignoredの `images/charts/` に保存されます。運用手順は
 ## トラブルシューティング
 
 **すべて `is_gap: true` が返ってくる**  
-ナレッジベースがまだ同期されていません。`bedrock-docs` S3バケットに資料をアップロードし、BedrockコンソールでSync（同期）ボタンを押す必要があります。それまではこの動作が正常です。
+必要な回答がインデックス済み資料に含まれていることを確認してから、`scripts\preflight.ps1` を実行してください。現在の `bedrock-docs` データソースは同期済みです。資料で裏付けられない質問には、意図どおりギャップ応答を返します。
+
+**PreflightでAuroraデータベースの再開中エラーが出る**
+
+ナレッジベースのベクトルストアは、アイドル時に自動停止する場合があります。数秒待ってから `scripts\preflight.ps1` を再実行してください。
 
 **`AccessDeniedException` またはクレデンシャルエラー**  
 `aws sts get-caller-identity` を実行してクレデンシャルが正常か確認してください。リージョンが `us-east-1` になっているかも確認してください。
@@ -297,7 +301,8 @@ curl.exe http://localhost:8000/health
 |------|----|
 | リージョン | `us-east-1`（バージニア北部） |
 | ナレッジベースID | `AJVVEPYMSH` |
-| S3バケット | `bedrock-docs` |
+| データソース | `bedrock-docs`（`N4SIKZJMBR`） |
+| S3バケット | `bedrock-docs-ttanaka-202606` |
 | メインモデル | `us.anthropic.claude-sonnet-4-6` |
 | 高速モデル | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
 

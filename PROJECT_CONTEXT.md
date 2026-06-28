@@ -40,7 +40,8 @@ AWS Bedrock (AWS Kiro and Azure OpenAI also available).
 | Knowledge Base ID | `AJVVEPYMSH` |
 | Embeddings | Titan Text Embeddings v2 (managed by the KB, never called directly) |
 | Vector store | Amazon Aurora (managed by the KB) |
-| Data source | S3 source named **`bedrock-docs`**. Must be **Synced** after files are uploaded. |
+| Data source | S3 source **`bedrock-docs`** (`N4SIKZJMBR`) |
+| S3 bucket | `bedrock-docs-ttanaka-202606` |
 
 **Models**
 
@@ -356,3 +357,12 @@ hunting for inline TODOs.
   the caller's shell or corrupt Japanese requests.
 - Removed the fixed deep-smoke port, added regression coverage for every
   reproduced defect, and formatted/import-sorted the Python codebase.
+
+### 2026-06-28 — Verified synced Bedrock data source
+- Confirmed Knowledge Base `AJVVEPYMSH` uses data source `N4SIKZJMBR` and S3
+  bucket `bedrock-docs-ttanaka-202606`; its completed sync indexed 3 documents
+  with 0 failures.
+- Re-ran live preflight with 5 retrieval results and verified Sonnet, Haiku,
+  known-answer citations, unsupported-question gap handling, and onboarding.
+- Replaced the stale empty-Knowledge-Base troubleshooting note and documented
+  the expected one-time retry when the Aurora vector store resumes from pause.

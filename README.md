@@ -266,7 +266,14 @@ a paid AWS call.
 ## Troubleshooting
 
 **Everything returns `is_gap: true`**  
-The Knowledge Base hasn't been synced yet. Documents need to be uploaded to the `bedrock-docs` S3 bucket and **Sync** pressed in the Bedrock console. This is expected until that's done.
+Confirm that the required answer is present in the indexed documents, then run
+`scripts\preflight.ps1`. The current `bedrock-docs` data source is synced; a
+genuine unsupported question intentionally returns the gap response.
+
+**Preflight says the Aurora database is resuming**
+
+The Knowledge Base vector store can auto-pause while idle. Wait a few seconds
+and rerun `scripts\preflight.ps1`.
 
 **`AccessDeniedException` or credentials error**  
 Run `aws sts get-caller-identity` to verify your credentials work. Make sure the region is `us-east-1`.
@@ -291,7 +298,8 @@ curl.exe http://localhost:8000/health
 |------|-------|
 | Region | `us-east-1` (N. Virginia) |
 | Knowledge Base ID | `AJVVEPYMSH` |
-| S3 bucket | `bedrock-docs` |
+| Data source | `bedrock-docs` (`N4SIKZJMBR`) |
+| S3 bucket | `bedrock-docs-ttanaka-202606` |
 | Main model | `us.anthropic.claude-sonnet-4-6` |
 | Fast model | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
 
