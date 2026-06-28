@@ -56,6 +56,7 @@ class VisualData(BaseModel):
     page_number: int | None = None
     caption: str | None = None
     static_images: list[StaticImageResponse] = []
+    pdf_url: str | None = None  # Presigned link to original PDF (fallback)
 
 
 class AskResponse(BaseModel):
@@ -267,11 +268,12 @@ def create_app(
         source_name: str | None = None
         page_num: int | None = None
         caption: str | None = None
+        pdf_url: str | None = None
 
         if static_image_renderer is not None and result.visual_reference is not None:
             try:
                 static_result = static_image_renderer.render(result.visual_reference)
-                if static_result and static_result.images:
+                if static_result:
                     static_images_response = [
                         StaticImageResponse(
                             image_url=img.image_url,
@@ -286,6 +288,7 @@ def create_app(
                     source_name = static_result.source
                     page_num = static_result.page_number
                     caption = static_result.caption
+                    pdf_url = static_result.pdf_url
             except Exception:
                 logger.exception(
                     "static_image_lookup_failed",
@@ -295,8 +298,8 @@ def create_app(
                     },
                 )
 
-        # If static images found, use the reference info for metadata
-        if not static_images_response and result.visual_reference is not None:
+        # If no static result at all, still populate metadata from the reference
+        if source_name is None and result.visual_reference is not None:
             source_name = result.visual_reference.source
             page_num = result.visual_reference.page_number
             caption = result.visual_reference.caption
@@ -312,6 +315,7 @@ def create_app(
                 page_number=page_num,
                 caption=caption,
                 static_images=static_images_response,
+                pdf_url=pdf_url,
             ),
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,

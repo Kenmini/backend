@@ -68,9 +68,14 @@ def main():
     print(f"Source: {vd3['source']}")
     print(f"image_url (base64): {vd3['image_url']}")
     print(f"Static images: {len(vd3['static_images'])}")
+    pdf_url = vd3.get("pdf_url")
+    if pdf_url:
+        print(f"PDF fallback URL: {pdf_url[:100]}...")
+    else:
+        print("PDF fallback URL: None")
     if not vd3["static_images"]:
-        print("  >> No static images for this page — currently returns nothing.")
-        print("     (base64 rendering is disabled)")
+        print("  >> No static images for this page.")
+        print("     Frontend can use pdf_url + page_number to render the PDF page.")
     print()
 
     print("=" * 70)
@@ -88,6 +93,31 @@ def main():
     print(f"Static images: {len(vd4['static_images'])}")
     for img in vd4["static_images"]:
         print(f"  - {img['filename']}: {img['name']}")
+    pdf_url4 = vd4.get("pdf_url")
+    if pdf_url4:
+        print(f"PDF fallback URL: {pdf_url4[:100]}...")
+    print()
+
+    print("=" * 70)
+    print("Test 5: Question likely to hit page 1 or 9 (NO static images)")
+    print("=" * 70)
+    r5 = client.post("/ask", json={
+        "message": "NBD分析の手順は？",
+        "session_id": "test-static-5",
+    })
+    data5 = r5.json()
+    print(f"Status: {r5.status_code}")
+    print(f"Answer: {data5['answer_text'][:120]}...")
+    vd5 = data5["visual_data"]
+    print(f"Page: {vd5['page_number']}")
+    print(f"Static images: {len(vd5['static_images'])}")
+    pdf_url5 = vd5.get("pdf_url")
+    if pdf_url5:
+        print(f"PDF fallback URL (presigned): {pdf_url5[:100]}...")
+    else:
+        print("PDF fallback URL: None")
+    if not vd5["static_images"] and pdf_url5:
+        print("  >> No static images, but frontend can load the PDF directly!")
     print()
 
 

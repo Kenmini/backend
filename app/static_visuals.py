@@ -53,6 +53,8 @@ class StaticVisualResult:
     source: str
     page_number: int
     caption: str
+    # Presigned URL to the source PDF (fallback when no static images exist)
+    pdf_url: str | None = None
 
 
 class StaticImageRenderer(Protocol):
@@ -104,21 +106,28 @@ class S3StaticImageRenderer:
     def render(self, reference: VisualReference) -> StaticVisualResult | None:
         """Look up static images for the given visual reference.
 
-        Returns None if no static images are available for this PDF/page.
+        Always returns a result when the source is a valid PDF:
+        - If static images exist for the page, returns them.
+        - If not, returns an empty images list with a presigned PDF URL as fallback.
+        Returns None only if the source is not a recognized PDF.
         """
         pdf_stem = self._pdf_stem(reference.source)
         if not pdf_stem:
             return None
 
         metadata = self._load_metadata(pdf_stem)
-        if metadata is None:
-            return None
 
-        # Find images for this page number
-        page_images = self._images_for_page(
-            metadata, pdf_stem, reference.page_number
-        )
-        if not page_images:
+        # Find static images for this page (may be empty)
+        page_images: list[StaticImage] = []
+        if metadata is not None:
+            page_images = self._images_for_page(
+                metadata, pdf_stem, reference.page_number
+            )
+
+        # Generate presigned URL to the original PDF as fallback
+        pdf_url = self._presign_pdf(reference.source_uri)
+
+        if not page_images and pdf_url is None:
             return None
 
         return StaticVisualResult(
@@ -126,6 +135,7 @@ class S3StaticImageRenderer:
             source=reference.source,
             page_number=reference.page_number,
             caption=reference.caption,
+            pdf_url=pdf_url,
         )
 
     def _pdf_stem(self, source_filename: str) -> str | None:
@@ -202,6 +212,26 @@ class S3StaticImageRenderer:
             )
 
         return images
+
+    def _presign_pdf(self, source_uri: str) -> str | None:
+        """Generate a presigned URL for the original PDF in S3."""
+        from urllib.parse import unquote, urlsplit
+
+        parsed = urlsplit(source_uri)
+        if parsed.scheme != "s3" or not parsed.netloc:
+            return None
+        key = unquote(parsed.path.lstrip("/"))
+        if not key.lower().endswith(".pdf"):
+            return None
+        try:
+            return self.s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": parsed.netloc, "Key": key},
+                ExpiresIn=self.presign_expiry,
+            )
+        except Exception:
+            logger.warning("failed to generate presigned PDF URL for %s", source_uri, exc_info=True)
+            return None
 
     def clear_cache(self) -> None:
         """Clear the metadata cache (useful after uploading new images)."""
