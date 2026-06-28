@@ -243,40 +243,43 @@ def create_app(
             figure_id = figures.DEFAULT_FIGURE_ID
         highlight_item: str | None = None
 
-        # RAGが参照したページをRekognitionで都度処理
+        # RAGが参照したページをRekognitionで処理（キャッシュ優先、非同期実行）
         if (
             not result.is_gap
             and result.source_pdf_s3_key
             and result.source_page_number
         ):
-            try:
-                labels_en = extract_page_labels(
-                    pdf_s3_key=result.source_pdf_s3_key,
-                    bucket=settings.s3_bucket,
-                    page_number=result.source_page_number,
-                    region=settings.aws_region,
-                )
-                # ページIDをfigure_idとして使用し、FIGURESをインメモリ更新
-                rek_figure_id = f"page_{result.source_page_number:04d}"
-                figures.FIGURES[rek_figure_id] = labels_en
+            rek_figure_id = f"page_{result.source_page_number:04d}"
+
+            if rek_figure_id in figures.FIGURES:
+                # キャッシュヒット: 即座に返す
                 figure_id = rek_figure_id
-                # 回答テキストに含まれるラベルをハイライト候補とする
                 answer_lower = result.answer_text.lower()
                 highlight_item = next(
-                    (lbl for lbl in labels_en if lbl.lower() in answer_lower),
+                    (lbl for lbl in figures.FIGURES[rek_figure_id] if lbl.lower() in answer_lower),
                     None,
                 )
-                logger.info(
-                    "rekognition_done",
-                    extra={
-                        "figure_id": rek_figure_id,
-                        "labels": labels_en,
-                        "highlight": highlight_item,
-                    },
-                )
-            except Exception:
-                # Rekognitionが失敗してもRAGの回答は返す（デグレードしない）
-                logger.exception("rekognition_on_demand_failed")
+            else:
+                # キャッシュミス: バックグラウンドで処理（今回の応答はデフォルトfigureを使用）
+                import threading
+
+                def _run_rekognition():
+                    try:
+                        labels_en = extract_page_labels(
+                            pdf_s3_key=result.source_pdf_s3_key,
+                            bucket=settings.s3_bucket,
+                            page_number=result.source_page_number,
+                            region=settings.aws_region,
+                        )
+                        figures.FIGURES[rek_figure_id] = labels_en
+                        logger.info(
+                            "rekognition_background_done",
+                            extra={"figure_id": rek_figure_id, "labels": labels_en},
+                        )
+                    except Exception:
+                        logger.exception("rekognition_background_failed")
+
+                threading.Thread(target=_run_rekognition, daemon=True).start()
                 highlight_item = figures.pick_highlight(figure_id, result.answer_text)
         else:
             highlight_item = figures.pick_highlight(figure_id, result.answer_text)
@@ -292,6 +295,7 @@ def create_app(
             confidence=result.confidence,
             is_gap=result.is_gap,
         )
+
 
     @app.get("/gaps")
     def gaps():

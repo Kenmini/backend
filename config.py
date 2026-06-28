@@ -108,6 +108,9 @@ class Settings:
     aws_region: str
     s3_bucket: str
     pdf_s3_key: str
+    # visuals機能設定
+    visuals_enabled: bool
+    visual_max_pdf_bytes: int
 
     @classmethod
     def from_env(cls, *, load_dotenv_file: bool = True) -> "Settings":
@@ -213,6 +216,12 @@ class Settings:
             s3_bucket=_env("S3_BUCKET", "bedrock-docs-ttanaka-202606"),
             pdf_s3_key=_env(
                 "PDF_S3_KEY", "hf2000_manual_tem_edx_nbd_dstem.pdf"
+            ),
+            visuals_enabled=_boolean(
+                "VISUALS_ENABLED", _env("VISUALS_ENABLED", "true")
+            ),
+            visual_max_pdf_bytes=_positive_int(
+                "VISUAL_MAX_PDF_BYTES", _env("VISUAL_MAX_PDF_BYTES", "20971520")
             ),
         )
 
