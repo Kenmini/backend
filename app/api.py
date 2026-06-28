@@ -233,7 +233,7 @@ def create_app(
         }
 
     @app.post("/ask", response_model=AskResponse)
-    def ask(request: AskRequest):
+    def ask(request: AskRequest, fastapi_request: Request):
         result = service.ask(request.message, request.session_id)
 
         # デフォルトのfigure設定
@@ -242,8 +242,9 @@ def create_app(
         else:
             figure_id = figures.DEFAULT_FIGURE_ID
         highlight_item: str | None = None
+        image_url: str | None = None
 
-        # RAGが参照したページをRekognitionで処理（キャッシュ優先、非同期実行）
+        # RAGが参照したページを処理
         if (
             not result.is_gap
             and result.source_pdf_s3_key
@@ -251,8 +252,25 @@ def create_app(
         ):
             rek_figure_id = f"page_{result.source_page_number:04d}"
 
+            # 画像のレンダリング
+            if hasattr(fastapi_request.app.state, "visual_renderer") and fastapi_request.app.state.visual_renderer:
+                try:
+                    from app.models import VisualReference
+                    ref = VisualReference(
+                        source_uri=f"s3://{settings.s3_bucket}/{result.source_pdf_s3_key}",
+                        source=result.source_pdf_s3_key,
+                        page_number=result.source_page_number,
+                        caption=f"Page {result.source_page_number}",
+                        score=result.confidence,
+                    )
+                    render_result = fastapi_request.app.state.visual_renderer.render(ref)
+                    image_url = render_result.image_url
+                except Exception:
+                    logger.exception("visual_render_failed")
+
+            # Rekognitionによるラベル抽出（同期実行）
             if rek_figure_id in figures.FIGURES:
-                # キャッシュヒット: 即座に返す
+                # キャッシュヒット
                 figure_id = rek_figure_id
                 answer_lower = result.answer_text.lower()
                 highlight_item = next(
@@ -260,27 +278,20 @@ def create_app(
                     None,
                 )
             else:
-                # キャッシュミス: バックグラウンドで処理（今回の応答はデフォルトfigureを使用）
-                import threading
-
-                def _run_rekognition():
-                    try:
-                        labels_en = extract_page_labels(
-                            pdf_s3_key=result.source_pdf_s3_key,
-                            bucket=settings.s3_bucket,
-                            page_number=result.source_page_number,
-                            region=settings.aws_region,
-                        )
-                        figures.FIGURES[rek_figure_id] = labels_en
-                        logger.info(
-                            "rekognition_background_done",
-                            extra={"figure_id": rek_figure_id, "labels": labels_en},
-                        )
-                    except Exception:
-                        logger.exception("rekognition_background_failed")
-
-                threading.Thread(target=_run_rekognition, daemon=True).start()
-                highlight_item = figures.pick_highlight(figure_id, result.answer_text)
+                # キャッシュミス
+                try:
+                    labels_en = extract_page_labels(
+                        pdf_s3_key=result.source_pdf_s3_key,
+                        bucket=settings.s3_bucket,
+                        page_number=result.source_page_number,
+                        region=settings.aws_region,
+                    )
+                    figures.FIGURES[rek_figure_id] = labels_en
+                    figure_id = rek_figure_id
+                    highlight_item = figures.pick_highlight(figure_id, result.answer_text)
+                except Exception:
+                    logger.exception("rekognition_sync_failed")
+                    highlight_item = figures.pick_highlight(figure_id, result.answer_text)
         else:
             highlight_item = figures.pick_highlight(figure_id, result.answer_text)
 
@@ -290,6 +301,7 @@ def create_app(
             visual_data=VisualData(
                 figure_id=figure_id,
                 highlight_item=highlight_item,
+                image_url=image_url,
             ),
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,
