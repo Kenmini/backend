@@ -278,25 +278,51 @@ def create_app(
         pdf_url: str | None = None
 
         if static_image_renderer is not None and result.visual_reference is not None:
-            try:
-                static_result = static_image_renderer.render(result.visual_reference)
-                if static_result:
-                    had_static_images = len(static_result.images) > 0
-                    # Keep only images relevant to this specific question/answer.
-                    # The retrieved chunk text (caption) is in the document's
-                    # language and matches the image metadata language, so it
-                    # gives reliable relevance even when the question/answer are
-                    # in a different language (JA manual vs EN question).
-                    relevance_query = " ".join(
-                        filter(
-                            None,
-                            [
-                                result.visual_reference.caption,
-                                request.message,
-                                result.answer_text,
-                            ],
-                        )
+            if result.visual_reference.source_uri.lower().endswith(".docx"):
+                from urllib.parse import unquote, urlsplit
+                parsed = urlsplit(result.visual_reference.source_uri)
+                key = unquote(parsed.path.lstrip("/"))
+                s3_image_key = f"figures/{key.replace('/', '_')}_page_0001.png"
+                
+                try:
+                    url = static_image_renderer.s3.generate_presigned_url(
+                        "get_object",
+                        Params={"Bucket": static_image_renderer.bucket, "Key": s3_image_key},
+                        ExpiresIn=3600,
                     )
+                    static_images_response = [
+                        StaticImageResponse(
+                            image_url=url,
+                            filename=s3_image_key.split("/")[-1],
+                            name="ドキュメントの図",
+                            description="Reference Map",
+                            page_number=1,
+                            highlights={},
+                        )
+                    ]
+                    had_static_images = True
+                    source_name = result.visual_reference.source
+                    page_num = 1
+                    caption = result.visual_reference.caption
+                    pdf_url = None
+                except Exception:
+                    logger.exception("docx_static_image_lookup_failed")
+            else:
+                try:
+                    static_result = static_image_renderer.render(result.visual_reference)
+                    if static_result:
+                        had_static_images = len(static_result.images) > 0
+                        # Keep only images relevant to this specific question/answer.
+                        relevance_query = " ".join(
+                            filter(
+                                None,
+                                [
+                                    result.visual_reference.caption,
+                                    request.message,
+                                    result.answer_text,
+                                ],
+                            )
+                        )
                     relevant_images = filter_relevant_images(
                         relevance_query,
                         static_result.images,
@@ -317,15 +343,14 @@ def create_app(
                     page_num = static_result.page_number
                     caption = static_result.caption
                     pdf_url = static_result.pdf_url
-            except Exception:
-                logger.exception(
-                    "static_image_lookup_failed",
-                    extra={
-                        "source": result.visual_reference.source,
-                        "page_number": result.visual_reference.page_number,
-                    },
-                )
-
+                except Exception:
+                    logger.exception(
+                        "static_image_lookup_failed",
+                        extra={
+                            "source": result.visual_reference.source,
+                            "page_number": result.visual_reference.page_number,
+                        },
+                    )
 
         # If no static result at all, still populate metadata from the reference
         if source_name is None and result.visual_reference is not None:
