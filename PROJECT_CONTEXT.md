@@ -366,3 +366,9 @@ hunting for inline TODOs.
   known-answer citations, unsupported-question gap handling, and onboarding.
 - Replaced the stale empty-Knowledge-Base troubleshooting note and documented
   the expected one-time retry when the Aurora vector store resumes from pause.
+
+### 2026-06-28 — Documented bilingual live verification
+- Added self-contained PowerShell checks to both READMEs for English and
+  Japanese questions against English and Japanese source documents.
+- Recorded the verified liquid-nitrogen result and the current limitations:
+  no translation notice and possible source-language labels or next-step hints.

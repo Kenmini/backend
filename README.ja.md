@@ -255,6 +255,45 @@ AWSを使わない確実なデモは次のコマンドで起動できます：
 .\scripts\preflight.ps1
 ```
 
+### 英語・日本語のライブ検索確認
+
+ライブサーバーをポート `8000` で起動した状態で、PowerShellに次のヘルパーを定義します：
+
+```powershell
+function Ask-Backend {
+    param([string]$Message, [string]$Session)
+
+    $body = @{
+        message = $Message
+        session_id = $Session
+    } | ConvertTo-Json
+
+    Invoke-RestMethod `
+        -Uri "http://localhost:8000/ask" `
+        -Method Post `
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+```
+
+4方向の言語組み合わせを確認します：
+
+```powershell
+# 英語の質問 -> 英語の資料
+Ask-Backend "What are Amazon Bedrock Guardrails used for?" "language-en-en"
+
+# 日本語の質問 -> 英語の資料
+Ask-Backend "Amazon Bedrock Guardrailsの主な用途は何ですか？" "language-ja-en"
+
+# 英語の質問 -> 日本語の資料
+Ask-Backend "How often should liquid nitrogen be replenished in the HF-2000 after the initial refill?" "language-en-ja"
+
+# 日本語の質問 -> 日本語の資料
+Ask-Backend "HF-2000の液体窒素は最初の補充後どのくらいの間隔で補充しますか？" "language-ja-ja"
+```
+
+液体窒素について期待する回答は「最初の投入から30分後に補給し、その後は3時間ごとに補給」です。ライブ確認では、英語資料から日本語回答、日本語資料から英語回答の両方に成功しています。現在のプロンプトは質問された言語で回答しますが、翻訳したことを示す通知はまだ返しません。また、出典ラベルや次の手順が資料側の言語になる場合があります。Titan Text Embeddings V2は英語と日本語をサポートしていますが、AWSはクロス言語検索の結果が最適でない可能性を説明しています。詳細は[AWS Titan Embeddingsドキュメント](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)を参照してください。
+
 テスト、全APIスモークテスト、構成図の生成：
 ```powershell
 pip install -r requirements-dev.txt

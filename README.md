@@ -72,6 +72,51 @@ Haiku in one pass:
 .\scripts\preflight.ps1
 ```
 
+### Live English/Japanese retrieval check
+
+With the live server running on port `8000`, define this PowerShell helper:
+
+```powershell
+function Ask-Backend {
+    param([string]$Message, [string]$Session)
+
+    $body = @{
+        message = $Message
+        session_id = $Session
+    } | ConvertTo-Json
+
+    Invoke-RestMethod `
+        -Uri "http://localhost:8000/ask" `
+        -Method Post `
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+```
+
+Test all four language directions:
+
+```powershell
+# English question -> English document
+Ask-Backend "What are Amazon Bedrock Guardrails used for?" "language-en-en"
+
+# Japanese question -> English document
+Ask-Backend "Amazon Bedrock Guardrailsの主な用途は何ですか？" "language-ja-en"
+
+# English question -> Japanese document
+Ask-Backend "How often should liquid nitrogen be replenished in the HF-2000 after the initial refill?" "language-en-ja"
+
+# Japanese question -> Japanese document
+Ask-Backend "HF-2000の液体窒素は最初の補充後どのくらいの間隔で補充しますか？" "language-ja-ja"
+```
+
+The expected liquid-nitrogen answer is: refill after 30 minutes, then every
+3 hours. Live verification confirmed retrieval and answering in both
+directions. The current prompt answers in the question's language, but the API
+does not yet return an explicit translation notice, and occasional labels or
+next-step hints can use the source language. Titan Text Embeddings V2 supports
+English and Japanese, but AWS notes that cross-language retrieval can be
+suboptimal. See the [AWS Titan Embeddings documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html).
+
 ## Development and demo checks
 
 ```powershell
