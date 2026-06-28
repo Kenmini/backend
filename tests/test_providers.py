@@ -337,7 +337,7 @@ def test_bilingual_retrieval_translates_and_merges_by_score():
             return {
                 "retrievalResults": [
                     {
-                        "score": 0.30,
+                        "score": 0.10,
                         "content": {"text": "無関係な日本語の内容。"},
                         "metadata": {
                             "x-amz-bedrock-kb-document-page-number": 9.0
