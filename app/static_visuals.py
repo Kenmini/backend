@@ -175,6 +175,14 @@ def keyword_relevant_indices(
     return kept
 
 
+def text_relevance_score(query_text: str, doc_text: str) -> int:
+    """Keyword-overlap score between two free-text strings (bilingual)."""
+    query_tokens = _tokenize(query_text)
+    if not query_tokens:
+        return 0
+    return len(query_tokens & _tokenize(doc_text or ""))
+
+
 class S3StaticImageRenderer:
     """Serves pre-uploaded static images from S3 via presigned URLs.
 

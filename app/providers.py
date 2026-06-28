@@ -10,6 +10,7 @@ from botocore.config import Config as BotoConfig
 
 import prompts
 from app.models import AnswerResult, Citation, HistoryTurn, VisualReference
+from app.static_visuals import text_relevance_score
 from config import Settings
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,10 @@ def _generated_citations(raw: list[dict]) -> list[Citation]:
     return citations
 
 
-def _visual_reference(results: list[dict]) -> VisualReference | None:
+def _visual_reference(
+    results: list[dict], answer_text: str = ""
+) -> VisualReference | None:
+    candidates: list[tuple[dict, dict, str, int, str]] = []
     for item in results:
         location = item.get("location", {})
         if location.get("type") != "S3":
@@ -100,17 +104,31 @@ def _visual_reference(results: list[dict]) -> VisualReference | None:
         page = item.get("metadata", {}).get("x-amz-bedrock-kb-document-page-number")
         if not isinstance(page, (int, float)) or page < 1 or int(page) != page:
             continue
-        caption = item.get("content", {}).get("text", "")
-        if not isinstance(caption, str):
-            caption = ""
-        return VisualReference(
-            source_uri=uri,
-            source=_source_name(location),
-            page_number=int(page),
-            caption=" ".join(caption.split())[:300],
-            score=round(float(item.get("score", 0.0)), 3),
+        content = item.get("content", {}).get("text", "")
+        if not isinstance(content, str):
+            content = ""
+        candidates.append((item, location, uri, int(page), content))
+
+    if not candidates:
+        return None
+
+    # Prefer the retrieved chunk whose text best matches the generated answer.
+    # This aligns the visual / PDF-fallback source with the document the answer
+    # actually used, instead of blindly taking the top-scored chunk (which, after
+    # a bilingual merge, may be from the other-language document).
+    if answer_text:
+        candidates.sort(
+            key=lambda c: text_relevance_score(answer_text, c[4]), reverse=True
         )
-    return None
+
+    item, location, uri, page, content = candidates[0]
+    return VisualReference(
+        source_uri=uri,
+        source=_source_name(location),
+        page_number=page,
+        caption=" ".join(content.split())[:300],
+        score=round(float(item.get("score", 0.0)), 3),
+    )
 
 
 class BedrockAnswerProvider:
@@ -412,7 +430,7 @@ class BedrockAnswerProvider:
             next_step_hint=next_step_hint,
             citations=_retrieval_citations(results),
             confidence=round(score, 3),
-            visual_reference=_visual_reference(results),
+            visual_reference=_visual_reference(results, answer_text),
             figure_id=figure_id,
         )
 
