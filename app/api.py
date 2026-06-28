@@ -278,11 +278,13 @@ def create_app(
         pdf_url: str | None = None
 
         if static_image_renderer is not None and result.visual_reference is not None:
-            if result.visual_reference.source_uri.lower().endswith(".docx"):
+            if result.visual_reference.page_number in [2, 3, 6, 8, 13, 17, 19]:
                 from urllib.parse import unquote, urlsplit
                 parsed = urlsplit(result.visual_reference.source_uri)
                 key = unquote(parsed.path.lstrip("/"))
-                s3_image_key = f"figures/{key.replace('/', '_')}_page_0001.png"
+                
+                # Format: figures/hf2000_manual_tem_edx_nbd_dstem.pdf_page_0002.png
+                s3_image_key = f"figures/{key.replace('/', '_')}_page_{result.visual_reference.page_number:04d}.png"
                 
                 try:
                     url = static_image_renderer.s3.generate_presigned_url(
@@ -294,19 +296,19 @@ def create_app(
                         StaticImageResponse(
                             image_url=url,
                             filename=s3_image_key.split("/")[-1],
-                            name="ドキュメントの図",
-                            description="Reference Map",
-                            page_number=1,
+                            name="マニュアルの図",
+                            description="Reference Page",
+                            page_number=result.visual_reference.page_number,
                             highlights={},
                         )
                     ]
                     had_static_images = True
                     source_name = result.visual_reference.source
-                    page_num = 1
+                    page_num = result.visual_reference.page_number
                     caption = result.visual_reference.caption
                     pdf_url = None
                 except Exception:
-                    logger.exception("docx_static_image_lookup_failed")
+                    logger.exception("figures_static_image_lookup_failed")
             else:
                 try:
                     static_result = static_image_renderer.render(result.visual_reference)

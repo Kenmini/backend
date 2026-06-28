@@ -83,28 +83,18 @@ def _visual_reference(results: list[dict]) -> VisualReference | None:
         if location.get("type") != "S3":
             continue
         uri = location.get("s3Location", {}).get("uri", "")
-        
-        path_lower = urlsplit(uri).path.lower()
-        is_pdf = path_lower.endswith(".pdf")
-        is_docx = path_lower.endswith(".docx")
-        if not (is_pdf or is_docx):
+        if not urlsplit(uri).path.lower().endswith(".pdf"):
             continue
-            
-        if is_pdf:
-            page = item.get("metadata", {}).get("x-amz-bedrock-kb-document-page-number")
-            if not isinstance(page, (int, float)) or page < 1 or int(page) != page:
-                continue
-            page_number = int(page)
-        else:
-            page_number = 1
-            
+        page = item.get("metadata", {}).get("x-amz-bedrock-kb-document-page-number")
+        if not isinstance(page, (int, float)) or page < 1 or int(page) != page:
+            continue
         caption = item.get("content", {}).get("text", "")
         if not isinstance(caption, str):
             caption = ""
         return VisualReference(
             source_uri=uri,
             source=_source_name(location),
-            page_number=page_number,
+            page_number=int(page),
             caption=" ".join(caption.split())[:300],
             score=round(float(item.get("score", 0.0)), 3),
         )
