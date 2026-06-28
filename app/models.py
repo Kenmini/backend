@@ -27,7 +27,6 @@ class AnswerResult:
 
 
 
-
 @dataclass(frozen=True)
 class HistoryTurn:
     user: str

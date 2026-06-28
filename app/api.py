@@ -14,6 +14,7 @@ from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerPr
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
 from app.security import SlidingWindowRateLimiter
 from app.services import KnowledgeService
+from app.static_visuals import S3StaticImageRenderer, StaticImageRenderer
 from app.visuals import PdfPageRenderer, S3PdfPageRenderer
 from config import Settings
 
@@ -38,6 +39,15 @@ class CitationResponse(BaseModel):
     snippet: str
 
 
+class StaticImageResponse(BaseModel):
+    image_url: str
+    filename: str
+    name: str
+    description: str
+    page_number: int
+    highlights: dict = {}
+
+
 class VisualData(BaseModel):
     figure_id: str | None = None
     highlight_item: str | None = None
@@ -45,6 +55,7 @@ class VisualData(BaseModel):
     source: str | None = None
     page_number: int | None = None
     caption: str | None = None
+    static_images: list[StaticImageResponse] = []
 
 
 class AskResponse(BaseModel):
@@ -113,15 +124,27 @@ def create_app(
     provider: AnswerProvider | None = None,
     repository: Repository | None = None,
     visual_renderer: PdfPageRenderer | None = None,
+    static_image_renderer: StaticImageRenderer | None = None,
 ) -> FastAPI:
     provider = provider or create_provider(settings)
     repository = repository or create_repository(settings)
+    # Base64 page rendering is disabled — static images are used instead.
+    # Keep visual_renderer=None unless explicitly passed for backwards compat.
     if (
         visual_renderer is None
         and settings.visuals_enabled
         and settings.app_mode == "live"
     ):
-        visual_renderer = S3PdfPageRenderer(settings)
+        # Previously: visual_renderer = S3PdfPageRenderer(settings)
+        # Now disabled in favour of static images.
+        visual_renderer = None
+    # Static image renderer
+    if (
+        static_image_renderer is None
+        and settings.visuals_enabled
+        and settings.app_mode == "live"
+    ):
+        static_image_renderer = S3StaticImageRenderer(settings)
     service = KnowledgeService(provider, repository)
     app = FastAPI(
         title="Lab Tacit-Knowledge AI Agent",
@@ -134,6 +157,7 @@ def create_app(
     app.state.provider = provider
     app.state.repository = repository
     app.state.visual_renderer = visual_renderer
+    app.state.static_image_renderer = static_image_renderer
 
     limiter = SlidingWindowRateLimiter(settings.model_rate_limit_per_minute)
 
@@ -237,32 +261,57 @@ def create_app(
         figure_id = figures.DEFAULT_FIGURE_ID
         if request.current_state and request.current_state.active_figure_id:
             figure_id = request.current_state.active_figure_id
-        rendered = None
-        if visual_renderer is not None and result.visual_reference is not None:
+
+        # Static image lookup (replaces base64 page rendering)
+        static_images_response: list[StaticImageResponse] = []
+        source_name: str | None = None
+        page_num: int | None = None
+        caption: str | None = None
+
+        if static_image_renderer is not None and result.visual_reference is not None:
             try:
-                rendered = visual_renderer.render(result.visual_reference)
+                static_result = static_image_renderer.render(result.visual_reference)
+                if static_result and static_result.images:
+                    static_images_response = [
+                        StaticImageResponse(
+                            image_url=img.image_url,
+                            filename=img.filename,
+                            name=img.name,
+                            description=img.description,
+                            page_number=img.page_number,
+                            highlights=img.highlights,
+                        )
+                        for img in static_result.images
+                    ]
+                    source_name = static_result.source
+                    page_num = static_result.page_number
+                    caption = static_result.caption
             except Exception:
                 logger.exception(
-                    "visual_render_failed",
+                    "static_image_lookup_failed",
                     extra={
                         "source": result.visual_reference.source,
                         "page_number": result.visual_reference.page_number,
                     },
                 )
+
+        # If static images found, use the reference info for metadata
+        if not static_images_response and result.visual_reference is not None:
+            source_name = result.visual_reference.source
+            page_num = result.visual_reference.page_number
+            caption = result.visual_reference.caption
+
         return AskResponse(
             answer_text=result.answer_text,
             next_step_hint=result.next_step_hint,
             visual_data=VisualData(
                 figure_id=figure_id,
-                highlight_item=(
-                    None
-                    if rendered is not None
-                    else figures.pick_highlight(figure_id, result.answer_text)
-                ),
-                image_url=rendered.image_url if rendered else None,
-                source=rendered.source if rendered else None,
-                page_number=rendered.page_number if rendered else None,
-                caption=rendered.caption if rendered else None,
+                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
+                image_url=None,  # base64 page rendering disabled
+                source=source_name,
+                page_number=page_num,
+                caption=caption,
+                static_images=static_images_response,
             ),
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,

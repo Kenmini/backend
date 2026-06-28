@@ -175,15 +175,13 @@ def test_ask_returns_rendered_pdf_page_visual():
 
     assert response.status_code == 200
     visual = response.json()["visual_data"]
-    assert visual == {
-        "figure_id": "panel_01",
-        "highlight_item": None,
-        "image_url": "data:image/jpeg;base64,/9j/",
-        "source": "manual.pdf",
-        "page_number": 3,
-        "caption": "試料ホルダーの挿入方法",
-    }
-    assert renderer.calls[0].source_uri == "s3://lab-docs/manual.pdf"
+    # Base64 page rendering is disabled; image_url is always None now.
+    # Static images would be returned if a static_image_renderer was provided.
+    assert visual["image_url"] is None
+    assert visual["source"] == "manual.pdf"
+    assert visual["page_number"] == 3
+    assert visual["caption"] == "試料ホルダーの挿入方法"
+    assert visual["static_images"] == []
 
 
 def test_visual_render_failure_keeps_safe_answer_contract():
