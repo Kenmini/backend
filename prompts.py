@@ -27,8 +27,6 @@ RAG_PROMPT_TEMPLATE = """\
 
 参考資料:
 $search_results$
-
-$output_format_instructions$
 """
 
 # Returned verbatim on a knowledge gap (instead of generating an answer).
