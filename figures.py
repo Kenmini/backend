@@ -1,7 +1,10 @@
-"""Demo figures and their valid hotspots, used to constrain visual_data.
+"""figures.py — 図IDとホットスポット名の管理。
 
-Hand-prepared for the MVP (no auto-tagging) — see PROJECT_CONTEXT.md.
+起動時は手作業で定義したデフォルト値を使用し、
+/admin/extract-figures エンドポイントを叩くことで
+Amazon Rekognition の結果を元に動的更新される。
 """
+from __future__ import annotations
 
 # figure_id -> hotspot names the frontend can draw.
 FIGURES: dict[str, list[str]] = {
@@ -41,3 +44,26 @@ def pick_highlight(figure_id: str, answer_text: str) -> str | None:
         if item in answer_text:
             return item
     return None
+
+
+def update_from_extraction(figure_infos: list) -> dict[str, list[str]]:
+    """Rekognition の抽出結果を元に FIGURES を動的更新する。
+
+    Parameters
+    ----------
+    figure_infos:
+        app.figure_extractor.FigureInfo のリスト
+
+    Returns
+    -------
+    dict[str, list[str]]
+        更新後の FIGURES の内容
+    """
+    for info in figure_infos:
+        # ラベルが存在するページだけ登録（空ページは除外）
+        if info.labels_ja:
+            # 重複を除いて既存エントリを上書き or 新規追加
+            FIGURES[info.figure_id] = list(dict.fromkeys(info.labels_ja))
+
+    return dict(FIGURES)
+

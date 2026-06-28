@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse
 
 import figures
+from app.figure_extractor import extract_page_labels
 from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerProvider
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
 from app.security import SlidingWindowRateLimiter
@@ -221,15 +222,58 @@ def create_app(
     @app.post("/ask", response_model=AskResponse)
     def ask(request: AskRequest):
         result = service.ask(request.message, request.session_id)
-        figure_id = figures.DEFAULT_FIGURE_ID
+
+        # デフォルトのfigure設定
         if request.current_state and request.current_state.active_figure_id:
             figure_id = request.current_state.active_figure_id
+        else:
+            figure_id = figures.DEFAULT_FIGURE_ID
+        highlight_item: str | None = None
+
+        # RAGが参照したページをRekognitionで都度処理
+        if (
+            not result.is_gap
+            and result.source_pdf_s3_key
+            and result.source_page_number
+        ):
+            try:
+                labels_en = extract_page_labels(
+                    pdf_s3_key=result.source_pdf_s3_key,
+                    bucket=settings.s3_bucket,
+                    page_number=result.source_page_number,
+                    region=settings.aws_region,
+                )
+                # ページIDをfigure_idとして使用し、FIGURESをインメモリ更新
+                rek_figure_id = f"page_{result.source_page_number:04d}"
+                figures.FIGURES[rek_figure_id] = labels_en
+                figure_id = rek_figure_id
+                # 回答テキストに含まれるラベルをハイライト候補とする
+                answer_lower = result.answer_text.lower()
+                highlight_item = next(
+                    (lbl for lbl in labels_en if lbl.lower() in answer_lower),
+                    None,
+                )
+                logger.info(
+                    "rekognition_done",
+                    extra={
+                        "figure_id": rek_figure_id,
+                        "labels": labels_en,
+                        "highlight": highlight_item,
+                    },
+                )
+            except Exception:
+                # Rekognitionが失敗してもRAGの回答は返す（デグレードしない）
+                logger.exception("rekognition_on_demand_failed")
+                highlight_item = figures.pick_highlight(figure_id, result.answer_text)
+        else:
+            highlight_item = figures.pick_highlight(figure_id, result.answer_text)
+
         return AskResponse(
             answer_text=result.answer_text,
             next_step_hint=result.next_step_hint,
             visual_data=VisualData(
                 figure_id=figure_id,
-                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
+                highlight_item=highlight_item,
             ),
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,

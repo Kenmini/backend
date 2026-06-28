@@ -14,6 +14,10 @@ class AnswerResult:
     citations: list[Citation] = field(default_factory=list)
     confidence: float = 0.0
     is_gap: bool = False
+    # RAGが参照したPDFのS3キーとページ番号（Rekognition用）
+    source_pdf_s3_key: str | None = None
+    source_page_number: int | None = None
+
 
 
 @dataclass(frozen=True)

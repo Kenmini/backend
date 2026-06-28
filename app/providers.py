@@ -120,9 +120,35 @@ class BedrockAnswerProvider:
                 confidence=0.0,
                 is_gap=True,
             )
+
+        # ベストなRAG結果からS3キーとページ番号を取得
+        best = max(results, key=lambda r: r.get("score", 0.0))
+        source_pdf_s3_key: str | None = None
+        source_page_number: int | None = None
+        try:
+            uri = best.get("location", {}).get("s3Location", {}).get("uri", "")
+            # uri 例: "s3://bedrock-docs-ttanaka-202606/hf2000_manual.pdf"
+            if uri.startswith("s3://"):
+                source_pdf_s3_key = uri[5:].split("/", 1)[1]  # バケット名を除いたキー
+            page_raw = best.get("metadata", {}).get("x-amz-bedrock-kb-document-page-number")
+            if page_raw is not None:
+                source_page_number = max(1, int(float(page_raw)))
+        except Exception:
+            pass
+
         if self.settings.answer_path == "easy":
-            return self._ask_easy(message, score)
-        return self._ask_advanced(message, history, score, results)
+            result = self._ask_easy(message, score)
+        else:
+            result = self._ask_advanced(message, history, score, results)
+
+        # frozen dataclassをreplaceしてページ情報を付与
+        from dataclasses import replace as dc_replace
+        return dc_replace(
+            result,
+            source_pdf_s3_key=source_pdf_s3_key,
+            source_page_number=source_page_number,
+        )
+
 
     def _ask_easy(self, message: str, score: float) -> AnswerResult:
         response = self.agent_runtime.retrieve_and_generate(

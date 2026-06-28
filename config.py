@@ -104,6 +104,10 @@ class Settings:
     public_demo: bool
     demo_api_token: str | None
     model_rate_limit_per_minute: int
+    # S3 / Rekognition 用設定
+    aws_region: str
+    s3_bucket: str
+    pdf_s3_key: str
 
     @classmethod
     def from_env(cls, *, load_dotenv_file: bool = True) -> "Settings":
@@ -204,6 +208,11 @@ class Settings:
             model_rate_limit_per_minute=_positive_int(
                 "MODEL_RATE_LIMIT_PER_MINUTE",
                 _env("MODEL_RATE_LIMIT_PER_MINUTE", "30"),
+            ),
+            aws_region=region,
+            s3_bucket=_env("S3_BUCKET", "bedrock-docs-ttanaka-202606"),
+            pdf_s3_key=_env(
+                "PDF_S3_KEY", "hf2000_manual_tem_edx_nbd_dstem.pdf"
             ),
         )
 
