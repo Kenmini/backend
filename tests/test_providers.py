@@ -380,3 +380,18 @@ def test_query_translation_disabled_runs_single_retrieval():
 
     # Only one retrieval and no translation call.
     assert len(agent.retrieve_calls) == 1
+
+
+def test_strong_retrieval_skips_translation_even_when_enabled():
+    providers = _providers()
+    # FakeAgentRuntime returns score 0.9, well above the gap threshold, so the
+    # direct retrieval is strong enough and translation should be skipped.
+    agent = FakeAgentRuntime(score=0.9)
+    runtime = FakeRuntime()
+    provider = providers.BedrockAnswerProvider(
+        settings(query_translation=True), agent, runtime
+    )
+
+    provider.ask("研究室はどこですか？", [])
+
+    assert len(agent.retrieve_calls) == 1
