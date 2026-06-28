@@ -398,9 +398,11 @@ def test_relevance_gate_drops_unrelated_image():
 
     assert response.status_code == 200
     visual = response.json()["visual_data"]
-    # Image existed for the page but the gate rejected it → nothing shown.
+    # Image existed for the page but the gate rejected it → no image card,
+    # but the source page is still offered as a collapsed PDF fallback.
     assert visual["static_images"] == []
-    assert visual["source"] is None
+    assert visual["source"] == "manual.pdf"
+    assert visual["page_number"] == 4
     assert provider.select_calls  # the gate was consulted
 
 

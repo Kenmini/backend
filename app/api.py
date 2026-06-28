@@ -276,7 +276,6 @@ def create_app(
 
         # Static image lookup (replaces base64 page rendering)
         static_images_response: list[StaticImageResponse] = []
-        had_static_images = False
         source_name: str | None = None
         page_num: int | None = None
         caption: str | None = None
@@ -324,14 +323,12 @@ def create_app(
                     # No real metadata for a full-page figure, so describe it by
                     # the retrieved chunk text — that's what the page is about.
                     candidate_descriptions = [vref.caption or ""]
-                    had_static_images = True
                 except Exception:
                     logger.exception("figures_static_image_lookup_failed")
             else:
                 try:
                     static_result = static_image_renderer.render(vref)
                     if static_result:
-                        had_static_images = len(static_result.images) > 0
                         candidate_images = [
                             StaticImageResponse(
                                 image_url=img.image_url,
@@ -402,25 +399,16 @@ def create_app(
             page_num = result.visual_reference.page_number
             caption = result.visual_reference.caption
 
-        # Decide whether to surface a page-level visual (static images or a PDF
-        # fallback). figure_id/highlight_item metadata is always passed through;
-        # it never renders a page image on its own.
-        #  - relevant static images        → show them
-        #  - page had images, none relevant → suppress source/page so no image
-        #    or PDF fallback shows (e.g. a "computer resources" image for a
-        #    phone-number question)
-        #  - page had no curated images     → keep source/page for PDF fallback
-        #    (useful for equipment manual text pages)
-        if static_images_response:
-            pass  # keep source/page/static for the image card
-        elif not had_static_images:
-            pass  # keep source/page for PDF fallback
-        else:
-            # Images existed but none matched this question — show nothing.
-            source_name = None
-            page_num = None
-            caption = None
-            pdf_url = None
+        # Decide what visual to surface. figure_id/highlight_item metadata is
+        # always passed through; it never renders a page image on its own.
+        #  - relevant static images found → show the image card
+        #  - otherwise, if we have a source page → show the collapsed
+        #    "click to view PDF" fallback so the user can still see the source
+        #    page the answer came from (no relevant diagram exists for it)
+        #  - no source page at all → show nothing
+        # We intentionally keep the PDF fallback even when a page had images
+        # that the relevance gate rejected: the source page is still useful and
+        # the frontend shows it collapsed, so it is low-noise.
 
         visual_data_response = VisualData(
             figure_id=figure_id,
