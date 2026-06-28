@@ -24,6 +24,7 @@ class AnswerResult:
     confidence: float = 0.0
     is_gap: bool = False
     visual_reference: VisualReference | None = None
+    figure_id: str | None = None
 
 
 

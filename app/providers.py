@@ -26,8 +26,13 @@ ANSWER_SCHEMA = {
                 "True only when the retrieved text directly supports the answer"
             ),
         },
+        "figure_id": {
+            "type": "string",
+            "enum": ["panel_01", "microscope_overview", "control_panel"],
+            "description": "The ID of the most appropriate image to show alongside the answer.",
+        },
     },
-    "required": ["answer_text", "next_step_hint", "is_supported"],
+    "required": ["answer_text", "next_step_hint", "is_supported", "figure_id"],
     "additionalProperties": False,
 }
 
@@ -241,6 +246,7 @@ class BedrockAnswerProvider:
         answer_text = parsed.get("answer_text")
         next_step_hint = parsed.get("next_step_hint")
         is_supported = parsed.get("is_supported")
+        figure_id = parsed.get("figure_id")
         if not isinstance(answer_text, str) or not answer_text.strip():
             raise ValueError("Bedrock returned an empty structured answer")
         if next_step_hint is not None and not isinstance(next_step_hint, str):
@@ -259,6 +265,7 @@ class BedrockAnswerProvider:
             citations=_retrieval_citations(results),
             confidence=round(score, 3),
             visual_reference=_visual_reference(results),
+            figure_id=figure_id,
         )
 
     def onboarding(self, role: str, field: str | None) -> str:

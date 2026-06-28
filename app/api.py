@@ -259,9 +259,11 @@ def create_app(
     @app.post("/ask", response_model=AskResponse)
     def ask(request: AskRequest):
         result = service.ask(request.message, request.session_id)
-        figure_id = figures.DEFAULT_FIGURE_ID
-        if request.current_state and request.current_state.active_figure_id:
-            figure_id = request.current_state.active_figure_id
+        figure_id = result.figure_id
+        if not figure_id:
+            figure_id = figures.DEFAULT_FIGURE_ID
+            if request.current_state and request.current_state.active_figure_id:
+                figure_id = request.current_state.active_figure_id
 
         # Static image lookup (replaces base64 page rendering)
         static_images_response: list[StaticImageResponse] = []
