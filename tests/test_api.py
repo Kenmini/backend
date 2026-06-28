@@ -4,8 +4,9 @@ from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
-from app.models import AnswerResult, Citation
+from app.models import AnswerResult, Citation, VisualReference
 from app.repositories import MemoryRepository
+from app.visuals import RenderedVisual
 from config import Settings
 
 
@@ -17,9 +18,10 @@ def _api():
 class FakeProvider:
     name = "fake"
 
-    def __init__(self, *, gap=False, fail=False):
+    def __init__(self, *, gap=False, fail=False, visual=False):
         self.gap = gap
         self.fail = fail
+        self.visual = visual
         self.ask_calls = []
         self.onboarding_calls = []
 
@@ -36,6 +38,17 @@ class FakeProvider:
             citations=[Citation("manual.pdf", "source")],
             confidence=0.8,
             is_gap=self.gap,
+            visual_reference=(
+                VisualReference(
+                    source_uri="s3://lab-docs/manual.pdf",
+                    source="manual.pdf",
+                    page_number=3,
+                    caption="試料ホルダーの挿入方法",
+                    score=0.8,
+                )
+                if self.visual and not self.gap
+                else None
+            ),
         )
 
     def onboarding(self, role, field):
@@ -58,7 +71,24 @@ class UnreadyRepository(MemoryRepository):
         raise OSError("database unavailable")
 
 
-def client(provider=None, repository=None):
+class FakeVisualRenderer:
+    def __init__(self, *, fail=False):
+        self.fail = fail
+        self.calls = []
+
+    def render(self, reference):
+        self.calls.append(reference)
+        if self.fail:
+            raise RuntimeError("render failed")
+        return RenderedVisual(
+            image_url="data:image/jpeg;base64,/9j/",
+            source=reference.source,
+            page_number=reference.page_number,
+            caption=reference.caption,
+        )
+
+
+def client(provider=None, repository=None, visual_renderer=None):
     api = _api()
     settings = replace(
         Settings.from_env(load_dotenv_file=False),
@@ -70,6 +100,7 @@ def client(provider=None, repository=None):
             settings=settings,
             provider=provider or FakeProvider(),
             repository=repository or MemoryRepository(history_limit=10),
+            visual_renderer=visual_renderer,
         )
     )
 
@@ -134,6 +165,36 @@ def test_ask_returns_contract_and_passes_session_history():
     assert provider.ask_calls[0][1] == []
     assert provider.ask_calls[1][1][0].assistant == "輝度つまみを確認してください。"
     assert second.status_code == 200
+
+
+def test_ask_returns_rendered_pdf_page_visual():
+    renderer = FakeVisualRenderer()
+    response = client(
+        provider=FakeProvider(visual=True), visual_renderer=renderer
+    ).post("/ask", json={"message": "試料ホルダーはどこですか？"})
+
+    assert response.status_code == 200
+    visual = response.json()["visual_data"]
+    assert visual == {
+        "figure_id": "panel_01",
+        "highlight_item": None,
+        "image_url": "data:image/jpeg;base64,/9j/",
+        "source": "manual.pdf",
+        "page_number": 3,
+        "caption": "試料ホルダーの挿入方法",
+    }
+    assert renderer.calls[0].source_uri == "s3://lab-docs/manual.pdf"
+
+
+def test_visual_render_failure_keeps_safe_answer_contract():
+    response = client(
+        provider=FakeProvider(visual=True),
+        visual_renderer=FakeVisualRenderer(fail=True),
+    ).post("/ask", json={"message": "試料ホルダーはどこですか？"})
+
+    assert response.status_code == 200
+    assert response.json()["answer_text"] == "輝度つまみを確認してください。"
+    assert response.json()["visual_data"]["image_url"] is None
 
 
 def test_gap_is_persisted_and_listed():

@@ -8,6 +8,15 @@ class Citation:
 
 
 @dataclass(frozen=True)
+class VisualReference:
+    source_uri: str
+    source: str
+    page_number: int
+    caption: str
+    score: float
+
+
+@dataclass(frozen=True)
 class AnswerResult:
     answer_text: str
     next_step_hint: str | None = None

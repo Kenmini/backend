@@ -52,9 +52,13 @@ a confidence score, optional visual highlight data, and the knowledge-gap flag.
 |-------|------|-------------|
 | `answer_text` | string | The grounded answer, or an honest "not documented yet" message when `is_gap` is true. |
 | `next_step_hint` | string \| null | Suggested next action from the advanced path; `null` on the easy or gap path. |
-| `visual_data` | object \| null | Which figure/hotspot to highlight. |
+| `visual_data` | object \| null | Retrieved PDF-page visual or static figure/hotspot data. |
 | `visual_data.figure_id` | string \| null | The active figure id (echoes the request or the default). |
 | `visual_data.highlight_item` | string \| null | A hotspot name from that figure's known list, or `null` if none matched. |
+| `visual_data.image_url` | string \| null | Inline JPEG data URL for the highest-ranked supported PDF page. |
+| `visual_data.source` | string \| null | Source PDF filename. |
+| `visual_data.page_number` | integer \| null | One-based source PDF page number. |
+| `visual_data.caption` | string \| null | Retrieved source text associated with the page. |
 | `citations` | array | Source passages the answer is based on. Empty when `is_gap` is true. |
 | `citations[].source` | string | Source document name (e.g. file name). |
 | `citations[].snippet` | string | Short excerpt from the source (≤300 chars). |
@@ -65,7 +69,14 @@ a confidence score, optional visual highlight data, and the knowledge-gap flag.
 {
   "answer_text": "照射系を調整するには、パネル右上の輝度つまみを時計回りに回します。",
   "next_step_hint": "次に、対物レンズのフォーカスを確認してください。",
-  "visual_data": { "figure_id": "panel_01", "highlight_item": "輝度つまみ" },
+  "visual_data": {
+    "figure_id": "panel_01",
+    "highlight_item": null,
+    "image_url": "data:image/jpeg;base64,/9j/...",
+    "source": "hf2000_manual_tem_edx_nbd_dstem.pdf",
+    "page_number": 3,
+    "caption": "試料ホルダーの挿入方法…"
+  },
   "citations": [
     { "source": "顕微鏡マニュアル.pdf", "snippet": "輝度つまみはパネル右上にあり…" }
   ],
@@ -101,6 +112,10 @@ question for professors.
 | `panel_01` | 輝度つまみ, 対物レンズ, フォーカスノブ, ステージ, 電源スイッチ |
 | `microscope_overview` | 接眼レンズ, 対物レンズ, ステージ, 光源, 粗動ハンドル, 微動ハンドル |
 | `control_panel` | 電源スイッチ, 輝度つまみ, シャッターボタン, 緊急停止ボタン |
+
+When `image_url` is present, the frontend can use it directly as an image
+`src`. PDF download or rendering failures leave these optional fields `null`
+without changing the answer.
 
 ---
 

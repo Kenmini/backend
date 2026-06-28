@@ -1,12 +1,13 @@
 import json
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 import boto3
 from botocore.config import Config as BotoConfig
 
 import prompts
-from app.models import AnswerResult, Citation, HistoryTurn
+from app.models import AnswerResult, Citation, HistoryTurn, VisualReference
 from config import Settings
 
 ONBOARDING_GAP_GUIDE = (
@@ -69,6 +70,30 @@ def _generated_citations(raw: list[dict]) -> list[Citation]:
             for reference in item.get("retrievedReferences", [])
         )
     return citations
+
+
+def _visual_reference(results: list[dict]) -> VisualReference | None:
+    for item in results:
+        location = item.get("location", {})
+        if location.get("type") != "S3":
+            continue
+        uri = location.get("s3Location", {}).get("uri", "")
+        if not urlsplit(uri).path.lower().endswith(".pdf"):
+            continue
+        page = item.get("metadata", {}).get("x-amz-bedrock-kb-document-page-number")
+        if not isinstance(page, (int, float)) or page < 1 or int(page) != page:
+            continue
+        caption = item.get("content", {}).get("text", "")
+        if not isinstance(caption, str):
+            caption = ""
+        return VisualReference(
+            source_uri=uri,
+            source=_source_name(location),
+            page_number=int(page),
+            caption=" ".join(caption.split())[:300],
+            score=round(float(item.get("score", 0.0)), 3),
+        )
+    return None
 
 
 class BedrockAnswerProvider:
@@ -254,6 +279,7 @@ class BedrockAnswerProvider:
             next_step_hint=next_step_hint,
             citations=_retrieval_citations(results),
             confidence=round(score, 3),
+            visual_reference=_visual_reference(results),
         )
 
     def onboarding(self, role: str, field: str | None) -> str:

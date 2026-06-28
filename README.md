@@ -72,6 +72,46 @@ Haiku in one pass:
 .\scripts\preflight.ps1
 ```
 
+### Live English/Japanese retrieval check
+
+With the live server running on port `8000`, define this PowerShell helper:
+
+```powershell
+function Ask-Backend {
+    param([string]$Message, [string]$Session)
+
+    $body = @{
+        message = $Message
+        session_id = $Session
+    } | ConvertTo-Json
+
+    Invoke-RestMethod `
+        -Uri "http://localhost:8000/ask" `
+        -Method Post `
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+```
+
+Test both supported question languages against the remaining Japanese lab
+documents:
+
+```powershell
+# English question -> Japanese document
+Ask-Backend "How often should liquid nitrogen be replenished in the HF-2000 after the initial refill?" "language-en-ja"
+
+# Japanese question -> Japanese document
+Ask-Backend "HF-2000の液体窒素は最初の補充後どのくらいの間隔で補充しますか？" "language-ja-ja"
+```
+
+The expected liquid-nitrogen answer is: refill after 30 minutes, then every
+3 hours. Live verification confirmed English and Japanese questions against
+the Japanese source. The current prompt answers in the question's language, but the API
+does not yet return an explicit translation notice, and occasional labels or
+next-step hints can use the source language. Titan Text Embeddings V2 supports
+English and Japanese, but AWS notes that cross-language retrieval can be
+suboptimal. See the [AWS Titan Embeddings documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html).
+
 ## Development and demo checks
 
 ```powershell
@@ -154,6 +194,8 @@ This is the main endpoint. Send a question, get an answer with citations.
 |----------------|-------------|
 | `answer_text` | The answer, or an honest "I don't know" if undocumented |
 | `visual_data.highlight_item` | A hotspot name to highlight on the figure (or `null`) |
+| `visual_data.image_url` | Inline JPEG data URL for the retrieved PDF page (or `null`) |
+| `visual_data.source` / `page_number` | Source PDF and one-based page number |
 | `citations` | Source documents the answer is based on |
 | `confidence` | Retrieval score for supported answers; `0.0` for knowledge gaps |
 | `is_gap` | `true` means no documented answer — question is logged for professors |
@@ -165,6 +207,9 @@ This is the main endpoint. Send a question, get an answer with citations.
 | `panel_01` | 輝度つまみ, 対物レンズ, フォーカスノブ, ステージ, 電源スイッチ |
 | `microscope_overview` | 接眼レンズ, 対物レンズ, ステージ, 光源, 粗動ハンドル, 微動ハンドル |
 | `control_panel` | 電源スイッチ, 輝度つまみ, シャッターボタン, 緊急停止ボタン |
+
+Display a retrieved PDF page with
+`<img src={response.visual_data.image_url} alt={response.visual_data.caption} />`.
 
 ---
 

@@ -41,15 +41,18 @@ try {
     Assert-True ($readiness.status -eq "ready") "Readiness check failed"
 
     $knownBody = ConvertTo-Utf8JsonBytes @{
-        message = "Amazon Bedrock Guardrailsの主な用途は何ですか？"
+        message = "HF-2000の液体窒素は最初の補充後どのくらいの間隔で補充しますか？"
         session_id = "live-smoke"
     }
     $known = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $knownBody -TimeoutSec 90
     Assert-True (-not $known.is_gap) "Known live query unexpectedly returned a gap"
     Assert-True ($known.citations.Count -gt 0) "Known live query returned no citations"
+    Assert-True ($known.visual_data.image_url.StartsWith("data:image/jpeg;base64,")) "Known live query returned no PDF page image"
+    Assert-True ($known.visual_data.source -eq "hf2000_manual_tem_edx_nbd_dstem.pdf") "Known live query returned the wrong visual source"
+    Assert-True ($known.visual_data.page_number -gt 0) "Known live query returned no visual page number"
 
     $gapBody = ConvertTo-Utf8JsonBytes @{
-        message = "研究室の安全ルール"
+        message = "研究室のWi-Fiパスワードは何ですか？"
         session_id = "live-smoke"
     }
     $gap = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $gapBody -TimeoutSec 90
