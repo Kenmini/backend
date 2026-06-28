@@ -212,7 +212,7 @@ class Settings:
                 "ONBOARDING_MAX_TOKENS", _env("ONBOARDING_MAX_TOKENS", "1400")
             ),
             model_temperature=_bounded_float(
-                "MODEL_TEMPERATURE", _env("MODEL_TEMPERATURE", "0.2"), 0.0, 1.0
+                "MODEL_TEMPERATURE", _env("MODEL_TEMPERATURE", "0.0"), 0.0, 1.0
             ),
             cors_origins=origins,
             public_demo=public_demo,
