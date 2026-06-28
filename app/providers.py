@@ -80,9 +80,7 @@ def _visual_reference(results: list[dict]) -> VisualReference | None:
         uri = location.get("s3Location", {}).get("uri", "")
         if not urlsplit(uri).path.lower().endswith(".pdf"):
             continue
-        page = item.get("metadata", {}).get(
-            "x-amz-bedrock-kb-document-page-number"
-        )
+        page = item.get("metadata", {}).get("x-amz-bedrock-kb-document-page-number")
         if not isinstance(page, (int, float)) or page < 1 or int(page) != page:
             continue
         caption = item.get("content", {}).get("text", "")

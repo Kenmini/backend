@@ -135,6 +135,8 @@ winget install --id Cloudflare.cloudflared --exact
 |-------------------|------|
 | `answer_text` | 回答文。資料に記録がない場合は正直な「わかりません」メッセージ |
 | `visual_data.highlight_item` | 図上でハイライトするホットスポット名（なければ `null`） |
+| `visual_data.image_url` | 検索されたPDFページのJPEG data URL（なければ `null`） |
+| `visual_data.source` / `page_number` | 出典PDF名と1始まりのページ番号 |
 | `citations` | 回答の根拠となった出典資料 |
 | `confidence` | 根拠あり回答の検索スコア。ナレッジギャップ時は `0.0` |
 | `is_gap` | `true` = 資料に答えなし。質問は教授向けに記録される |
@@ -146,6 +148,8 @@ winget install --id Cloudflare.cloudflared --exact
 | `panel_01` | 輝度つまみ, 対物レンズ, フォーカスノブ, ステージ, 電源スイッチ |
 | `microscope_overview` | 接眼レンズ, 対物レンズ, ステージ, 光源, 粗動ハンドル, 微動ハンドル |
 | `control_panel` | 電源スイッチ, 輝度つまみ, シャッターボタン, 緊急停止ボタン |
+
+検索されたPDFページは `<img src={response.visual_data.image_url} alt={response.visual_data.caption} />` で表示できます。
 
 ---
 
@@ -276,15 +280,9 @@ function Ask-Backend {
 }
 ```
 
-4方向の言語組み合わせを確認します：
+現在残っている日本語の研究室資料に対して、英語と日本語の質問を確認します：
 
 ```powershell
-# 英語の質問 -> 英語の資料
-Ask-Backend "What are Amazon Bedrock Guardrails used for?" "language-en-en"
-
-# 日本語の質問 -> 英語の資料
-Ask-Backend "Amazon Bedrock Guardrailsの主な用途は何ですか？" "language-ja-en"
-
 # 英語の質問 -> 日本語の資料
 Ask-Backend "How often should liquid nitrogen be replenished in the HF-2000 after the initial refill?" "language-en-ja"
 
@@ -292,7 +290,7 @@ Ask-Backend "How often should liquid nitrogen be replenished in the HF-2000 afte
 Ask-Backend "HF-2000の液体窒素は最初の補充後どのくらいの間隔で補充しますか？" "language-ja-ja"
 ```
 
-液体窒素について期待する回答は「最初の投入から30分後に補給し、その後は3時間ごとに補給」です。ライブ確認では、英語資料から日本語回答、日本語資料から英語回答の両方に成功しています。現在のプロンプトは質問された言語で回答しますが、翻訳したことを示す通知はまだ返しません。また、出典ラベルや次の手順が資料側の言語になる場合があります。Titan Text Embeddings V2は英語と日本語をサポートしていますが、AWSはクロス言語検索の結果が最適でない可能性を説明しています。詳細は[AWS Titan Embeddingsドキュメント](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)を参照してください。
+液体窒素について期待する回答は「最初の投入から30分後に補給し、その後は3時間ごとに補給」です。ライブ確認では、日本語資料に対する英語と日本語の質問の両方に成功しています。現在のプロンプトは質問された言語で回答しますが、翻訳したことを示す通知はまだ返しません。また、出典ラベルや次の手順が資料側の言語になる場合があります。Titan Text Embeddings V2は英語と日本語をサポートしていますが、AWSはクロス言語検索の結果が最適でない可能性を説明しています。詳細は[AWS Titan Embeddingsドキュメント](https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html)を参照してください。
 
 テスト、全APIスモークテスト、構成図の生成：
 ```powershell

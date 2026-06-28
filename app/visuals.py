@@ -1,6 +1,7 @@
 import base64
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Protocol
 from urllib.parse import unquote, urlsplit
 
 import boto3
@@ -21,6 +22,10 @@ class RenderedVisual:
     source: str
     page_number: int
     caption: str
+
+
+class PdfPageRenderer(Protocol):
+    def render(self, reference: VisualReference) -> RenderedVisual: ...
 
 
 class S3PdfPageRenderer:
@@ -61,7 +66,11 @@ class S3PdfPageRenderer:
     def _render_page(self, source_uri: str, page_number: int) -> str:
         parsed = urlsplit(source_uri)
         key = unquote(parsed.path.lstrip("/"))
-        if parsed.scheme != "s3" or not parsed.netloc or not key.lower().endswith(".pdf"):
+        if (
+            parsed.scheme != "s3"
+            or not parsed.netloc
+            or not key.lower().endswith(".pdf")
+        ):
             raise VisualRenderError("visual source must be an S3 PDF")
 
         response = self.s3.get_object(Bucket=parsed.netloc, Key=key)

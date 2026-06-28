@@ -152,11 +152,14 @@ the latest 10 session turns, and a JSON response schema. Sonnet handles `/ask`;
 Haiku handles `/onboarding`. Citations remain retrieval-derived. Supported
 answers expose the retrieval score; gaps expose confidence `0.0`.
 
-### visual_data sourcing (MVP)
-**No figure auto-tagging.** `figures.py` holds a small set of hand-prepared
-figures, each with a fixed list of named hotspots. The backend constrains
-`highlight_item` to that known list (MVP: keyword match against the answer text).
-Looks identical on stage, fraction of the effort.
+### visual_data sourcing
+For supported PDF answers, Bedrock's source URI and page-number metadata are
+retained and `app/visuals.py` renders the retrieved page as a bounded, cached
+JPEG data URL. The response includes the source file, one-based page number,
+and retrieved-text caption. Rendering failures do not affect the answer.
+
+The original static fallback remains: `figures.py` holds hand-prepared figures
+and known hotspots, and constrains `highlight_item` by answer-text matching.
 
 ---
 
@@ -167,6 +170,7 @@ backend/                  (this repo root)
   app/api.py         FastAPI app factory, schemas, routes, readiness.
   app/services.py    Ask/onboarding orchestration and safe fallbacks.
   app/providers.py   Bedrock and deterministic fixture providers.
+  app/visuals.py     Bounded S3 PDF-page download, render, and cache.
   app/repositories.py SQLite/memory stores, migrations, backup/restore.
   app/security.py    Public-demo sliding-window request limiter.
   app/preflight.py   Live AWS identity, retrieval, and model checks.
@@ -190,6 +194,8 @@ The **Japanese system prompt** lives in `prompts.py` (`SYSTEM_PROMPT`).
 - ✅ `GET /health` returns `{"status":"ok"}`; app starts with `uvicorn main:app`.
 - ✅ `POST /ask` uses Sonnet Converse, structured output, citations, next-step
   hints, and bounded SQLite session history.
+- ✅ Supported PDF answers can return the retrieved source page as an inline
+  JPEG with source, page number, and caption metadata.
 - ✅ `/onboarding` routes through Haiku; `/faq` remains static and deterministic.
 - ✅ SQLite stores gaps, feedback, and interactions; memory mode is explicit.
 - ✅ `/ready`, fixture demo mode, JSON logs, backup/restore, AWS preflight,
@@ -266,7 +272,7 @@ hunting for inline TODOs.
 | Advanced answer path | `app.providers.BedrockAnswerProvider`; active with `ANSWER_PATH=advanced`. |
 | Per-session conversation history | `app.repositories` stores and bounds the latest 10 interactions. |
 | `next_step_hint` generation | Sonnet structured output in `app.providers`. |
-| Real figure auto-tagging | Replace the static map in `figures.py` and have the model return `highlight_item` as structured output. |
+| Object-level image extraction/highlighting | Replace full-page previews with extracted image regions and verified coordinates; retain `app/visuals.py` as the delivery boundary. |
 | Streaming (typing effect) | Add a streaming provider method and route in `app/api.py`. |
 | Bedrock Guardrails | Add `guardrailConfig` to Converse calls in `app/providers.py`. |
 | Cloud persistence | Add a repository implementation without changing routes or services. |
@@ -380,3 +386,13 @@ hunting for inline TODOs.
   Japanese meeting minutes.
 - Replaced the deleted Guardrails live-smoke case with a grounded HF-2000
   liquid-nitrogen question and a deterministic Wi-Fi knowledge-gap question.
+
+### 2026-06-28 — Retrieved PDF page visuals
+- Preserved Bedrock's source URI and PDF page metadata for supported answers,
+  while excluding knowledge gaps and non-PDF sources.
+- Added bounded, cached S3 PDF rendering with PyMuPDF and returned compressed
+  JPEG data URLs plus source, page, and caption fields in `visual_data`.
+- Kept rendering failures non-fatal and retained the static figure/hotspot
+  fallback for demo fixtures.
+- Extended unit, contract, documentation, and live smoke coverage; visually
+  verified the rendered HF-2000 liquid-nitrogen source page.

@@ -14,6 +14,7 @@ from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerPr
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
 from app.security import SlidingWindowRateLimiter
 from app.services import KnowledgeService
+from app.visuals import PdfPageRenderer, S3PdfPageRenderer
 from config import Settings
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ class CitationResponse(BaseModel):
 class VisualData(BaseModel):
     figure_id: str | None = None
     highlight_item: str | None = None
+    image_url: str | None = None
+    source: str | None = None
+    page_number: int | None = None
+    caption: str | None = None
 
 
 class AskResponse(BaseModel):
@@ -107,9 +112,16 @@ def create_app(
     settings: Settings,
     provider: AnswerProvider | None = None,
     repository: Repository | None = None,
+    visual_renderer: PdfPageRenderer | None = None,
 ) -> FastAPI:
     provider = provider or create_provider(settings)
     repository = repository or create_repository(settings)
+    if (
+        visual_renderer is None
+        and settings.visuals_enabled
+        and settings.app_mode == "live"
+    ):
+        visual_renderer = S3PdfPageRenderer(settings)
     service = KnowledgeService(provider, repository)
     app = FastAPI(
         title="Lab Tacit-Knowledge AI Agent",
@@ -121,6 +133,7 @@ def create_app(
     app.state.settings = settings
     app.state.provider = provider
     app.state.repository = repository
+    app.state.visual_renderer = visual_renderer
 
     limiter = SlidingWindowRateLimiter(settings.model_rate_limit_per_minute)
 
@@ -224,12 +237,32 @@ def create_app(
         figure_id = figures.DEFAULT_FIGURE_ID
         if request.current_state and request.current_state.active_figure_id:
             figure_id = request.current_state.active_figure_id
+        rendered = None
+        if visual_renderer is not None and result.visual_reference is not None:
+            try:
+                rendered = visual_renderer.render(result.visual_reference)
+            except Exception:
+                logger.exception(
+                    "visual_render_failed",
+                    extra={
+                        "source": result.visual_reference.source,
+                        "page_number": result.visual_reference.page_number,
+                    },
+                )
         return AskResponse(
             answer_text=result.answer_text,
             next_step_hint=result.next_step_hint,
             visual_data=VisualData(
                 figure_id=figure_id,
-                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
+                highlight_item=(
+                    None
+                    if rendered is not None
+                    else figures.pick_highlight(figure_id, result.answer_text)
+                ),
+                image_url=rendered.image_url if rendered else None,
+                source=rendered.source if rendered else None,
+                page_number=rendered.page_number if rendered else None,
+                caption=rendered.caption if rendered else None,
             ),
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,

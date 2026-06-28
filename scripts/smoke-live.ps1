@@ -47,6 +47,9 @@ try {
     $known = Invoke-RestMethod "$baseUrl/ask" -Method Post -ContentType "application/json" -Body $knownBody -TimeoutSec 90
     Assert-True (-not $known.is_gap) "Known live query unexpectedly returned a gap"
     Assert-True ($known.citations.Count -gt 0) "Known live query returned no citations"
+    Assert-True ($known.visual_data.image_url.StartsWith("data:image/jpeg;base64,")) "Known live query returned no PDF page image"
+    Assert-True ($known.visual_data.source -eq "hf2000_manual_tem_edx_nbd_dstem.pdf") "Known live query returned the wrong visual source"
+    Assert-True ($known.visual_data.page_number -gt 0) "Known live query returned no visual page number"
 
     $gapBody = ConvertTo-Utf8JsonBytes @{
         message = "研究室のWi-Fiパスワードは何ですか？"

@@ -69,9 +69,7 @@ def test_renderer_rejects_oversized_pdf_before_reading():
 
 
 def test_renderer_rejects_invalid_page_and_non_pdf_source():
-    renderer = S3PdfPageRenderer(
-        s3_client=FakeS3(pdf_bytes()), max_pdf_bytes=1_000_000
-    )
+    renderer = S3PdfPageRenderer(s3_client=FakeS3(pdf_bytes()), max_pdf_bytes=1_000_000)
 
     with pytest.raises(VisualRenderError, match="page"):
         renderer.render(reference(page_number=2))
