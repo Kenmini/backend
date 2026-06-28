@@ -64,6 +64,13 @@ class S3PdfPageRenderer:
 
     @lru_cache(maxsize=16)
     def _render_page(self, source_uri: str, page_number: int) -> str:
+        image = self._render_page_bytes(source_uri, page_number)
+        encoded = base64.b64encode(image).decode("ascii")
+        return f"data:image/jpeg;base64,{encoded}"
+
+    @lru_cache(maxsize=16)
+    def _render_page_bytes(self, source_uri: str, page_number: int) -> bytes:
+        """Render a single PDF page to JPEG bytes."""
         parsed = urlsplit(source_uri)
         key = unquote(parsed.path.lstrip("/"))
         if (
@@ -105,8 +112,7 @@ class S3PdfPageRenderer:
             image = pixmap.tobytes("jpeg", jpg_quality=72)
         finally:
             document.close()
-        encoded = base64.b64encode(image).decode("ascii")
-        return f"data:image/jpeg;base64,{encoded}"
+        return image
 
     @staticmethod
     def _close_body(body) -> None:

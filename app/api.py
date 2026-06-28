@@ -304,10 +304,29 @@ def create_app(
             page_num = result.visual_reference.page_number
             caption = result.visual_reference.caption
 
-        return AskResponse(
-            answer_text=result.answer_text,
-            next_step_hint=result.next_step_hint,
-            visual_data=VisualData(
+        # Only include visual_data when there are actual static images to show
+        # AND the source is the equipment manual PDF (not onboarding or other docs).
+        # Showing a random PDF page for "what's the lab phone number" is noise.
+        equipment_pdf_stem = (
+            settings.pdf_s3_key.rsplit(".", 1)[0].lower() if settings.pdf_s3_key else ""
+        )
+        source_is_equipment = (
+            equipment_pdf_stem
+            and source_name is not None
+            and equipment_pdf_stem in source_name.lower()
+        )
+        has_meaningful_visual = (
+            len(static_images_response) > 0 and source_is_equipment
+        )
+        # Also allow PDF fallback for equipment manual pages even without static images
+        has_pdf_fallback = (
+            len(static_images_response) == 0
+            and source_is_equipment
+            and page_num is not None
+        )
+        visual_data_response: VisualData | None = None
+        if has_meaningful_visual:
+            visual_data_response = VisualData(
                 figure_id=figure_id,
                 highlight_item=figures.pick_highlight(figure_id, result.answer_text),
                 image_url=None,  # base64 page rendering disabled
@@ -316,7 +335,23 @@ def create_app(
                 caption=caption,
                 static_images=static_images_response,
                 pdf_url=pdf_url,
-            ),
+            )
+        elif has_pdf_fallback:
+            visual_data_response = VisualData(
+                figure_id=figure_id,
+                highlight_item=figures.pick_highlight(figure_id, result.answer_text),
+                image_url=None,
+                source=source_name,
+                page_number=page_num,
+                caption=caption,
+                static_images=[],
+                pdf_url=pdf_url,
+            )
+
+        return AskResponse(
+            answer_text=result.answer_text,
+            next_step_hint=result.next_step_hint,
+            visual_data=visual_data_response,
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,
             is_gap=result.is_gap,
@@ -357,5 +392,50 @@ def create_app(
         except Exception as exc:
             raise HTTPException(503, "Feedback could not be recorded") from exc
         return {"ok": True}
+
+    @app.get("/visual/page")
+    def visual_page(source: str, page: int):
+        """Render a single PDF page from S3 as a JPEG image.
+
+        This endpoint is called on-demand when the frontend needs to show
+        a PDF page that has no pre-extracted static images.
+
+        Query params:
+            source: The S3 key of the PDF (e.g., "Onboarding Manual_20260306_anonymized.pdf")
+            page: One-based page number
+        """
+        if page < 1:
+            raise HTTPException(400, "Page number must be at least 1")
+        if not source:
+            raise HTTPException(400, "Source is required")
+
+        from app.visuals import S3PdfPageRenderer, VisualRenderError
+
+        # Reuse or create a page renderer with a higher size limit for on-demand use
+        page_renderer = getattr(app.state, "_page_renderer", None)
+        if page_renderer is None:
+            page_renderer = S3PdfPageRenderer(
+                settings,
+                max_pdf_bytes=50 * 1024 * 1024,  # 50 MiB for on-demand rendering
+            )
+            app.state._page_renderer = page_renderer
+
+        source_uri = f"s3://{settings.s3_bucket}/{source}"
+        try:
+            image_bytes = page_renderer._render_page_bytes(source_uri, page)
+        except VisualRenderError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        except Exception:
+            logger.exception("visual_page_render_failed")
+            raise HTTPException(500, "Failed to render PDF page")
+
+        return Response(
+            content=image_bytes,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "Content-Disposition": f'inline; filename="page_{page}.jpg"',
+            },
+        )
 
     return app
