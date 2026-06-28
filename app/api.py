@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse
 
 import figures
-from app.figure_extractor import extract_page_labels
 from app.providers import AnswerProvider, BedrockAnswerProvider, FixtureAnswerProvider
 from app.repositories import MemoryRepository, Repository, SQLiteRepository
 from app.security import SlidingWindowRateLimiter
@@ -233,81 +232,42 @@ def create_app(
         }
 
     @app.post("/ask", response_model=AskResponse)
-    def ask(request: AskRequest, fastapi_request: Request):
+    def ask(request: AskRequest):
         result = service.ask(request.message, request.session_id)
-
-        # デフォルトのfigure設定
+        figure_id = figures.DEFAULT_FIGURE_ID
         if request.current_state and request.current_state.active_figure_id:
             figure_id = request.current_state.active_figure_id
-        else:
-            figure_id = figures.DEFAULT_FIGURE_ID
-        highlight_item: str | None = None
-        image_url: str | None = None
-
-        # RAGが参照したページを処理
-        if (
-            not result.is_gap
-            and result.source_pdf_s3_key
-            and result.source_page_number
-        ):
-            rek_figure_id = f"page_{result.source_page_number:04d}"
-
-            # 画像のレンダリング
-            if hasattr(fastapi_request.app.state, "visual_renderer") and fastapi_request.app.state.visual_renderer:
-                try:
-                    from app.models import VisualReference
-                    ref = VisualReference(
-                        source_uri=f"s3://{settings.s3_bucket}/{result.source_pdf_s3_key}",
-                        source=result.source_pdf_s3_key,
-                        page_number=result.source_page_number,
-                        caption=f"Page {result.source_page_number}",
-                        score=result.confidence,
-                    )
-                    render_result = fastapi_request.app.state.visual_renderer.render(ref)
-                    image_url = render_result.image_url
-                except Exception:
-                    logger.exception("visual_render_failed")
-
-            # Rekognitionによるラベル抽出（同期実行）
-            if rek_figure_id in figures.FIGURES:
-                # キャッシュヒット
-                figure_id = rek_figure_id
-                answer_lower = result.answer_text.lower()
-                highlight_item = next(
-                    (lbl for lbl in figures.FIGURES[rek_figure_id] if lbl.lower() in answer_lower),
-                    None,
+        rendered = None
+        if visual_renderer is not None and result.visual_reference is not None:
+            try:
+                rendered = visual_renderer.render(result.visual_reference)
+            except Exception:
+                logger.exception(
+                    "visual_render_failed",
+                    extra={
+                        "source": result.visual_reference.source,
+                        "page_number": result.visual_reference.page_number,
+                    },
                 )
-            else:
-                # キャッシュミス
-                try:
-                    labels_en = extract_page_labels(
-                        pdf_s3_key=result.source_pdf_s3_key,
-                        bucket=settings.s3_bucket,
-                        page_number=result.source_page_number,
-                        region=settings.aws_region,
-                    )
-                    figures.FIGURES[rek_figure_id] = labels_en
-                    figure_id = rek_figure_id
-                    highlight_item = figures.pick_highlight(figure_id, result.answer_text)
-                except Exception:
-                    logger.exception("rekognition_sync_failed")
-                    highlight_item = figures.pick_highlight(figure_id, result.answer_text)
-        else:
-            highlight_item = figures.pick_highlight(figure_id, result.answer_text)
-
         return AskResponse(
             answer_text=result.answer_text,
             next_step_hint=result.next_step_hint,
             visual_data=VisualData(
                 figure_id=figure_id,
-                highlight_item=highlight_item,
-                image_url=image_url,
+                highlight_item=(
+                    None
+                    if rendered is not None
+                    else figures.pick_highlight(figure_id, result.answer_text)
+                ),
+                image_url=rendered.image_url if rendered else None,
+                source=rendered.source if rendered else None,
+                page_number=rendered.page_number if rendered else None,
+                caption=rendered.caption if rendered else None,
             ),
             citations=[CitationResponse(**vars(item)) for item in result.citations],
             confidence=result.confidence,
             is_gap=result.is_gap,
         )
-
 
     @app.get("/gaps")
     def gaps():
